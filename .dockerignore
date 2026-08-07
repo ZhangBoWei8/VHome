@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.docker.example
+.idea
+.vscode
+.DS_Store
+data
+web/node_modules
+web/dist
+**/*_test.go
+**/*.log

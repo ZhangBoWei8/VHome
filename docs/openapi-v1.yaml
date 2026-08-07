@@ -1,0 +1,2001 @@
+openapi: 3.1.0
+info:
+  title: VHome API
+  version: 0.1.0
+  description: |
+    VHome 第一阶段 API，覆盖唯一家庭初始化、会话、成员、存储位置、
+    物料种类、库存批次、库存流水和 Dashboard。
+servers:
+  - url: /api/v1
+    description: 当前 VHome 服务
+
+tags:
+  - name: Bootstrap
+    description: 首次初始化
+  - name: Auth
+    description: 登录和会话
+  - name: Household
+    description: 唯一家庭资料
+  - name: Members
+    description: 家庭成员
+  - name: StorageLocations
+    description: 存储位置
+  - name: Materials
+    description: 物料种类
+  - name: Inventory
+    description: 库存批次与流水
+  - name: Dashboard
+    description: 首页聚合数据
+  - name: Public
+    description: 未登录访客只读接口
+
+paths:
+  /bootstrap:
+    get:
+      tags: [Bootstrap]
+      operationId: getBootstrapStatus
+      summary: 查询系统初始化和当前会话状态
+      security: []
+      responses:
+        "200":
+          description: 启动状态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BootstrapResponse"
+
+  /setup:
+    post:
+      tags: [Bootstrap]
+      operationId: setupVHome
+      summary: 首次创建家庭和 OWNER
+      description: 仅在系统尚未初始化时可调用，成功后同时建立登录会话。
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupRequest"
+      responses:
+        "201":
+          description: 初始化成功
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /auth/sessions:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: 登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: 登录成功
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /auth/session:
+    get:
+      tags: [Auth]
+      operationId: getCurrentSession
+      summary: 获取当前会话
+      responses:
+        "200":
+          description: 当前会话
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags: [Auth]
+      operationId: logout
+      summary: 退出当前会话
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      responses:
+        "204":
+          description: 已退出
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /auth/password:
+    post:
+      tags: [Auth]
+      operationId: changeCurrentPassword
+      summary: 修改当前成员密码
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [current_password, new_password]
+              properties:
+                current_password:
+                  type: string
+                  format: password
+                new_password:
+                  type: string
+                  format: password
+                  minLength: 10
+      responses:
+        "204":
+          description: 密码已更新
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /household:
+    get:
+      tags: [Household]
+      operationId: getHousehold
+      summary: 获取唯一家庭资料
+      responses:
+        "200":
+          description: 家庭资料
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Household]
+      operationId: updateHousehold
+      summary: 修改唯一家庭资料
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HouseholdUpdateRequest"
+      responses:
+        "200":
+          description: 更新后的家庭资料
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /members:
+    get:
+      tags: [Members]
+      operationId: listMembers
+      summary: 查询家庭成员
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            $ref: "#/components/schemas/MemberRole"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/MemberStatus"
+      responses:
+        "200":
+          description: 成员列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Member"
+    post:
+      tags: [Members]
+      operationId: createMember
+      summary: 创建家庭成员
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberCreateRequest"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /members/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      tags: [Members]
+      operationId: getMember
+      summary: 获取成员
+      responses:
+        "200":
+          description: 成员资料
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Members]
+      operationId: updateMember
+      summary: 修改成员
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberUpdateRequest"
+      responses:
+        "200":
+          description: 更新后的成员
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Members]
+      operationId: deleteMember
+      summary: 停用或软删除成员
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      responses:
+        "204":
+          description: 成员已停用
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /members/{id}/ownership-transfer:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [Members]
+      operationId: transferOwnership
+      summary: 将目标成员升级为 OWNER
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [current_password]
+              properties:
+                current_password:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: 目标 OWNER
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /storage-locations:
+    get:
+      tags: [StorageLocations]
+      operationId: listStorageLocations
+      summary: 查询存储位置
+      parameters:
+        - name: include_counts
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: 存储位置
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, request_id]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StorageLocation"
+                  request_id:
+                    type: string
+    post:
+      tags: [StorageLocations]
+      operationId: createStorageLocation
+      summary: 创建存储位置
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StorageLocationCreateRequest"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageLocationResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /storage-locations/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      tags: [StorageLocations]
+      operationId: getStorageLocation
+      summary: 获取存储位置
+      responses:
+        "200":
+          description: 存储位置
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageLocationResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [StorageLocations]
+      operationId: updateStorageLocation
+      summary: 修改存储位置
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StorageLocationUpdateRequest"
+      responses:
+        "200":
+          description: 更新后的存储位置
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageLocationResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [StorageLocations]
+      operationId: deleteStorageLocation
+      summary: 删除空存储位置
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      responses:
+        "204":
+          description: 已删除
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /materials:
+    get:
+      tags: [Materials]
+      operationId: listMaterials
+      summary: 查询物料种类
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/MaterialStatus"
+        - name: expiry_policy
+          in: query
+          schema:
+            $ref: "#/components/schemas/ExpiryPolicy"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, created_at, updated_at]
+            default: name
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          description: 物料种类列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Material"
+    post:
+      tags: [Materials]
+      operationId: createMaterial
+      summary: 创建物料种类
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaterialCreateRequest"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaterialResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /materials/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      tags: [Materials]
+      operationId: getMaterial
+      summary: 获取物料种类
+      responses:
+        "200":
+          description: 物料种类
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaterialResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Materials]
+      operationId: updateMaterial
+      summary: 修改物料种类
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaterialUpdateRequest"
+      responses:
+        "200":
+          description: 更新后的物料种类
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaterialResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Materials]
+      operationId: archiveMaterial
+      summary: 删除或归档物料种类
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      responses:
+        "204":
+          description: 已删除或归档
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /inventory/summary:
+    get:
+      tags: [Inventory]
+      operationId: getInventorySummary
+      summary: 获取库存汇总
+      responses:
+        "200":
+          description: 库存汇总
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySummaryResponse"
+
+  /inventory/batches:
+    get:
+      tags: [Inventory]
+      operationId: listInventoryBatches
+      summary: 查询库存批次
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: material_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: location_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/InventoryBatchStatus"
+        - name: expiry_status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ExpiryStatus"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [expires_at, stored_at, updated_at, material_name]
+            default: expires_at
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          description: 库存批次
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/InventoryBatch"
+    post:
+      tags: [Inventory]
+      operationId: stockIn
+      summary: 新增库存批次
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StockInRequest"
+      responses:
+        "201":
+          description: 入库成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryBatchResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /inventory/batches/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      tags: [Inventory]
+      operationId: getInventoryBatch
+      summary: 获取库存批次
+      responses:
+        "200":
+          description: 库存批次
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryBatchResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Inventory]
+      operationId: updateInventoryBatch
+      summary: 修改批次日期和备注
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryBatchUpdateRequest"
+      responses:
+        "200":
+          description: 更新后的批次
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryBatchResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /inventory/batches/{id}/transactions:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      tags: [Inventory]
+      operationId: createInventoryTransaction
+      summary: 消耗、丢弃、调整或移动库存
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryTransactionRequest"
+      responses:
+        "200":
+          description: 流水创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryTransactionResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /inventory/transactions:
+    get:
+      tags: [Inventory]
+      operationId: listInventoryTransactions
+      summary: 查询库存流水
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: batch_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: material_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: operator_id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: type
+          in: query
+          schema:
+            $ref: "#/components/schemas/InventoryTransactionType"
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: 库存流水
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/InventoryTransaction"
+
+  /dashboard/overview:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboardOverview
+      summary: 获取登录后的家庭首页聚合数据
+      responses:
+        "200":
+          description: 首页数据
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardResponse"
+
+  /public/dashboard:
+    get:
+      tags: [Public]
+      operationId: getPublicDashboard
+      summary: 获取未登录访客首页
+      security: []
+      responses:
+        "200":
+          description: 公共首页数据
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicDashboardResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /public/inventory:
+    get:
+      tags: [Public]
+      operationId: getPublicInventory
+      summary: 获取未登录访客物料仓库
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 公开物料
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/PublicInventoryItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: vhome_session
+
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    SortOrder:
+      name: order
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: asc
+    CSRFToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+
+  responses:
+    Unauthorized:
+      description: 未登录或会话失效
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: 没有权限
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: 当前资源状态冲突
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ValidationFailed:
+      description: 字段验证失败
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    RequestId:
+      type: string
+      examples: [req_01J6A9N4WQFD6T7QF3T7QF3T7Q]
+
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: "#/components/schemas/ErrorDetail"
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error, request_id]
+      properties:
+        error:
+          $ref: "#/components/schemas/Error"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    PaginationMeta:
+      type: object
+      additionalProperties: false
+      required: [page, page_size, total, total_pages]
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+          format: int64
+        total_pages:
+          type: integer
+
+    PaginatedResponse:
+      type: object
+      required: [data, meta, request_id]
+      properties:
+        data:
+          type: array
+          items: {}
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    IconType:
+      type: string
+      enum: [EMOJI, BUILTIN, UPLOAD]
+
+    Icon:
+      type: object
+      additionalProperties: false
+      required: [type, value]
+      properties:
+        type:
+          $ref: "#/components/schemas/IconType"
+        value:
+          type: string
+          minLength: 1
+          maxLength: 255
+
+    MemberRole:
+      type: string
+      enum: [OWNER, ADMIN, MEMBER]
+
+    MemberStatus:
+      type: string
+      enum: [ACTIVE, DISABLED]
+
+    Member:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - email
+        - role
+        - status
+        - created_at
+        - updated_at
+        - version
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/MemberRole"
+        status:
+          $ref: "#/components/schemas/MemberStatus"
+        avatar:
+          oneOf:
+            - $ref: "#/components/schemas/Icon"
+            - type: "null"
+        last_login_at:
+          type: [string, "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+
+    MemberSummary:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        role:
+          $ref: "#/components/schemas/MemberRole"
+        avatar:
+          oneOf:
+            - $ref: "#/components/schemas/Icon"
+            - type: "null"
+
+    MemberResponse:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          $ref: "#/components/schemas/Member"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    MemberCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, email, initial_password, role]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        email:
+          type: string
+          format: email
+        initial_password:
+          type: string
+          format: password
+          minLength: 10
+        role:
+          $ref: "#/components/schemas/MemberRole"
+        avatar:
+          $ref: "#/components/schemas/Icon"
+
+    MemberUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        role:
+          $ref: "#/components/schemas/MemberRole"
+        status:
+          $ref: "#/components/schemas/MemberStatus"
+        avatar:
+          $ref: "#/components/schemas/Icon"
+        version:
+          type: integer
+          minimum: 1
+
+    PublicInventoryMode:
+      type: string
+      enum: [CATALOG_ONLY, SUMMARY, FULL_READONLY]
+
+    Household:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - timezone
+        - public_dashboard_enabled
+        - public_inventory_enabled
+        - public_inventory_mode
+        - created_at
+        - updated_at
+        - version
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        timezone:
+          type: string
+          examples: [Asia/Shanghai]
+        icon:
+          $ref: "#/components/schemas/Icon"
+        public_dashboard_enabled:
+          type: boolean
+        public_inventory_enabled:
+          type: boolean
+        public_inventory_mode:
+          $ref: "#/components/schemas/PublicInventoryMode"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+
+    HouseholdResponse:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          $ref: "#/components/schemas/Household"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    HouseholdUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        timezone:
+          type: string
+        icon:
+          $ref: "#/components/schemas/Icon"
+        public_dashboard_enabled:
+          type: boolean
+        public_inventory_enabled:
+          type: boolean
+        public_inventory_mode:
+          $ref: "#/components/schemas/PublicInventoryMode"
+        version:
+          type: integer
+          minimum: 1
+
+    BootstrapNextRoute:
+      type: string
+      enum: [SETUP, LOGIN, DASHBOARD]
+
+    BootstrapResponse:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [initialized, authenticated, next_route, api_version]
+          properties:
+            initialized:
+              type: boolean
+            authenticated:
+              type: boolean
+            next_route:
+              $ref: "#/components/schemas/BootstrapNextRoute"
+            api_version:
+              type: string
+              const: v1
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    SetupRequest:
+      type: object
+      additionalProperties: false
+      required: [household, owner]
+      properties:
+        household:
+          type: object
+          additionalProperties: false
+          required: [name, timezone, icon]
+          properties:
+            name:
+              type: string
+              minLength: 1
+              maxLength: 64
+            timezone:
+              type: string
+            icon:
+              $ref: "#/components/schemas/Icon"
+        owner:
+          type: object
+          additionalProperties: false
+          required: [name, email, password]
+          properties:
+            name:
+              type: string
+              minLength: 1
+              maxLength: 64
+            email:
+              type: string
+              format: email
+            password:
+              type: string
+              format: password
+              minLength: 10
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        remember_me:
+          type: boolean
+          default: false
+
+    SessionData:
+      type: object
+      additionalProperties: false
+      required: [csrf_token, member, household, permissions]
+      properties:
+        csrf_token:
+          type: string
+        member:
+          $ref: "#/components/schemas/Member"
+        household:
+          $ref: "#/components/schemas/Household"
+        permissions:
+          type: array
+          items:
+            type: string
+
+    SessionResponse:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          $ref: "#/components/schemas/SessionData"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    StorageLocationKind:
+      type: string
+      enum: [REFRIGERATED, FROZEN, CABINET, CUSTOM]
+
+    StorageLocation:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - kind
+        - sort_order
+        - material_count
+        - active_batch_count
+        - created_at
+        - updated_at
+        - version
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/StorageLocationKind"
+        parent_id:
+          type: [integer, "null"]
+          format: int64
+        icon:
+          $ref: "#/components/schemas/Icon"
+        sort_order:
+          type: integer
+        material_count:
+          type: integer
+        active_batch_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+
+    StorageLocationCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, kind, icon]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        kind:
+          $ref: "#/components/schemas/StorageLocationKind"
+        parent_id:
+          type: [integer, "null"]
+          format: int64
+        icon:
+          $ref: "#/components/schemas/Icon"
+        sort_order:
+          type: integer
+          default: 0
+
+    StorageLocationUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        kind:
+          $ref: "#/components/schemas/StorageLocationKind"
+        parent_id:
+          type: [integer, "null"]
+          format: int64
+        icon:
+          $ref: "#/components/schemas/Icon"
+        sort_order:
+          type: integer
+        version:
+          type: integer
+          minimum: 1
+
+    StorageLocationResponse:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          $ref: "#/components/schemas/StorageLocation"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    MaterialStatus:
+      type: string
+      enum: [ACTIVE, ARCHIVED]
+
+    MaterialUnit:
+      type: string
+      enum: [G, KG, ML, L, PIECE, BOX, BOTTLE, CAN]
+
+    ExpiryPolicy:
+      type: string
+      enum: [ESTIMATED_DURATION, LABELED_DATE, NONE]
+
+    Nutrition:
+      type: object
+      additionalProperties: false
+      required:
+        - kcal_per_100g
+        - protein_g_per_100g
+        - fat_g_per_100g
+        - carbohydrate_g_per_100g
+      properties:
+        kcal_per_100g:
+          type: number
+          minimum: 0
+        protein_g_per_100g:
+          type: number
+          minimum: 0
+        fat_g_per_100g:
+          type: number
+          minimum: 0
+        carbohydrate_g_per_100g:
+          type: number
+          minimum: 0
+
+    Material:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - category
+        - base_unit
+        - expiry_policy
+        - nutrition
+        - icon
+        - status
+        - created_at
+        - updated_at
+        - version
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        category:
+          type: string
+        base_unit:
+          $ref: "#/components/schemas/MaterialUnit"
+        grams_per_unit:
+          type: [number, "null"]
+          minimum: 0
+        expiry_policy:
+          $ref: "#/components/schemas/ExpiryPolicy"
+        default_shelf_life_days:
+          type: [integer, "null"]
+          minimum: 1
+        opened_shelf_life_days:
+          type: [integer, "null"]
+          minimum: 1
+        default_location_id:
+          type: [integer, "null"]
+          format: int64
+        nutrition:
+          $ref: "#/components/schemas/Nutrition"
+        icon:
+          $ref: "#/components/schemas/Icon"
+        status:
+          $ref: "#/components/schemas/MaterialStatus"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+
+    MaterialCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - category
+        - base_unit
+        - expiry_policy
+        - nutrition
+        - icon
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        category:
+          type: string
+          minLength: 1
+          maxLength: 64
+        base_unit:
+          $ref: "#/components/schemas/MaterialUnit"
+        grams_per_unit:
+          type: [number, "null"]
+          minimum: 0
+        expiry_policy:
+          $ref: "#/components/schemas/ExpiryPolicy"
+        default_shelf_life_days:
+          type: [integer, "null"]
+          minimum: 1
+        opened_shelf_life_days:
+          type: [integer, "null"]
+          minimum: 1
+        default_location_id:
+          type: [integer, "null"]
+          format: int64
+        nutrition:
+          $ref: "#/components/schemas/Nutrition"
+        icon:
+          $ref: "#/components/schemas/Icon"
+
+    MaterialUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        category:
+          type: string
+          minLength: 1
+          maxLength: 64
+        base_unit:
+          $ref: "#/components/schemas/MaterialUnit"
+        grams_per_unit:
+          type: [number, "null"]
+          minimum: 0
+        expiry_policy:
+          $ref: "#/components/schemas/ExpiryPolicy"
+        default_shelf_life_days:
+          type: [integer, "null"]
+          minimum: 1
+        opened_shelf_life_days:
+          type: [integer, "null"]
+          minimum: 1
+        default_location_id:
+          type: [integer, "null"]
+          format: int64
+        nutrition:
+          $ref: "#/components/schemas/Nutrition"
+        icon:
+          $ref: "#/components/schemas/Icon"
+        version:
+          type: integer
+          minimum: 1
+
+    MaterialResponse:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          $ref: "#/components/schemas/Material"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    InventoryBatchStatus:
+      type: string
+      enum: [ACTIVE, DEPLETED, DISCARDED]
+
+    ExpiryStatus:
+      type: string
+      enum: [NONE, NORMAL, EXPIRING_SOON, EXPIRING_URGENT, EXPIRED]
+
+    MaterialReference:
+      type: object
+      additionalProperties: false
+      required: [id, name, category, icon]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        category:
+          type: string
+        icon:
+          $ref: "#/components/schemas/Icon"
+
+    StorageLocationReference:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/StorageLocationKind"
+
+    InventoryBatch:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - material
+        - location
+        - quantity
+        - unit
+        - stored_at
+        - expiry_status
+        - status
+        - created_by
+        - created_at
+        - updated_at
+        - version
+      properties:
+        id:
+          type: integer
+          format: int64
+        material:
+          $ref: "#/components/schemas/MaterialReference"
+        location:
+          $ref: "#/components/schemas/StorageLocationReference"
+        quantity:
+          type: number
+          minimum: 0
+        unit:
+          $ref: "#/components/schemas/MaterialUnit"
+        stored_at:
+          type: string
+          format: date-time
+        production_date:
+          type: [string, "null"]
+          format: date
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+        opened_at:
+          type: [string, "null"]
+          format: date-time
+        expiry_status:
+          $ref: "#/components/schemas/ExpiryStatus"
+        days_until_expiry:
+          type: [integer, "null"]
+        status:
+          $ref: "#/components/schemas/InventoryBatchStatus"
+        note:
+          type: [string, "null"]
+        created_by:
+          $ref: "#/components/schemas/MemberSummary"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+
+    InventoryBatchResponse:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          $ref: "#/components/schemas/InventoryBatch"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    StockInRequest:
+      type: object
+      additionalProperties: false
+      required: [material_id, location_id, quantity, unit, stored_at]
+      properties:
+        material_id:
+          type: integer
+          format: int64
+        location_id:
+          type: integer
+          format: int64
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+        unit:
+          $ref: "#/components/schemas/MaterialUnit"
+        stored_at:
+          type: string
+          format: date-time
+        production_date:
+          type: [string, "null"]
+          format: date
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+        note:
+          type: [string, "null"]
+          maxLength: 500
+
+    InventoryBatchUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        production_date:
+          type: [string, "null"]
+          format: date
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+        opened_at:
+          type: [string, "null"]
+          format: date-time
+        note:
+          type: [string, "null"]
+          maxLength: 500
+        version:
+          type: integer
+          minimum: 1
+
+    InventoryTransactionType:
+      type: string
+      enum: [STOCK_IN, CONSUME, DISCARD, ADJUST, MOVE]
+
+    InventoryTransactionRequest:
+      type: object
+      additionalProperties: false
+      required: [type, unit, occurred_at]
+      properties:
+        type:
+          type: string
+          enum: [CONSUME, DISCARD, ADJUST, MOVE]
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+        new_quantity:
+          type: number
+          minimum: 0
+        unit:
+          $ref: "#/components/schemas/MaterialUnit"
+        target_location_id:
+          type: integer
+          format: int64
+        occurred_at:
+          type: string
+          format: date-time
+        note:
+          type: [string, "null"]
+          maxLength: 500
+
+    InventoryTransaction:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - type
+        - unit
+        - quantity_before
+        - quantity_after
+        - occurred_at
+        - operator
+      properties:
+        id:
+          type: integer
+          format: int64
+        batch_id:
+          type: integer
+          format: int64
+        type:
+          $ref: "#/components/schemas/InventoryTransactionType"
+        quantity:
+          type: [number, "null"]
+        unit:
+          $ref: "#/components/schemas/MaterialUnit"
+        quantity_before:
+          type: number
+        quantity_after:
+          type: number
+        source_location_id:
+          type: [integer, "null"]
+          format: int64
+        target_location_id:
+          type: [integer, "null"]
+          format: int64
+        occurred_at:
+          type: string
+          format: date-time
+        operator:
+          $ref: "#/components/schemas/MemberSummary"
+        note:
+          type: [string, "null"]
+
+    InventoryTransactionResponse:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [transaction, batch]
+          properties:
+            transaction:
+              $ref: "#/components/schemas/InventoryTransaction"
+            batch:
+              $ref: "#/components/schemas/InventoryBatch"
+            created_batch:
+              oneOf:
+                - $ref: "#/components/schemas/InventoryBatch"
+                - type: "null"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    InventoryLocationSummary:
+      type: object
+      additionalProperties: false
+      required: [location_id, location_name, material_count, active_batch_count]
+      properties:
+        location_id:
+          type: integer
+          format: int64
+        location_name:
+          type: string
+        material_count:
+          type: integer
+        active_batch_count:
+          type: integer
+
+    InventorySummary:
+      type: object
+      additionalProperties: false
+      required:
+        - material_count
+        - active_batch_count
+        - expiring_soon_count
+        - expired_count
+        - frozen_material_count
+        - consumed_this_week_count
+        - locations
+      properties:
+        material_count:
+          type: integer
+        active_batch_count:
+          type: integer
+        expiring_soon_count:
+          type: integer
+        expired_count:
+          type: integer
+        frozen_material_count:
+          type: integer
+        consumed_this_week_count:
+          type: integer
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryLocationSummary"
+
+    InventorySummaryResponse:
+      type: object
+      additionalProperties: false
+      required: [data, request_id]
+      properties:
+        data:
+          $ref: "#/components/schemas/InventorySummary"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    DashboardResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required:
+            - greeting
+            - inventory
+            - expiring_items
+            - storage_locations
+            - recent_activities
+            - members
+          properties:
+            greeting:
+              type: object
+              properties:
+                member_name:
+                  type: string
+                household_name:
+                  type: string
+                local_date:
+                  type: string
+                  format: date
+                timezone:
+                  type: string
+            inventory:
+              $ref: "#/components/schemas/InventorySummary"
+            expiring_items:
+              type: array
+              items:
+                $ref: "#/components/schemas/InventoryBatch"
+            storage_locations:
+              type: array
+              items:
+                $ref: "#/components/schemas/StorageLocation"
+            recent_activities:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  type:
+                    type: string
+                  summary:
+                    type: string
+                  occurred_at:
+                    type: string
+                    format: date-time
+            members:
+              type: array
+              items:
+                $ref: "#/components/schemas/MemberSummary"
+            environment:
+              type: [object, "null"]
+            expense:
+              type: [object, "null"]
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    PublicDashboardResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          properties:
+            household_name:
+              type: string
+            household_icon:
+              $ref: "#/components/schemas/Icon"
+            material_count:
+              type: integer
+            inventory_available:
+              type: boolean
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    PublicInventoryItem:
+      type: object
+      required: [material_id, name, category, icon, nutrition]
+      properties:
+        material_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        category:
+          type: string
+        icon:
+          $ref: "#/components/schemas/Icon"
+        nutrition:
+          $ref: "#/components/schemas/Nutrition"
+        availability:
+          type: string
+          enum: [IN_STOCK, LOW, OUT_OF_STOCK]
+        quantity:
+          type: number
+        unit:
+          $ref: "#/components/schemas/MaterialUnit"
+
+security:
+  - sessionCookie: []
