@@ -69,9 +69,7 @@ type RegistrationData struct {
 	Member MemberData `json:"member"`
 }
 
-func newHouseholdData(
-	household model.Household,
-) HouseholdData {
+func newHouseholdData(household model.Household) HouseholdData {
 	return HouseholdData{
 		ID:   household.ID,
 		Name: household.DisplayName,
@@ -87,9 +85,7 @@ func newHouseholdData(
 	}
 }
 
-func newMemberData(
-	member model.Member,
-) MemberData {
+func newMemberData(member model.Member) MemberData {
 	return MemberData{
 		ID:             member.ID,
 		Username:       member.Username,
@@ -102,9 +98,7 @@ func newMemberData(
 	}
 }
 
-func newSetupSessionData(
-	result service.SetupResult,
-) SessionData {
+func newSetupSessionData(result service.SetupResult) SessionData {
 	return SessionData{
 		CSRFToken: result.CSRFToken,
 		ExpiresAt: result.SessionExpiresAt,
@@ -117,9 +111,7 @@ func newSetupSessionData(
 	}
 }
 
-func newLoginSessionData(
-	result service.LoginResult,
-) SessionData {
+func newLoginSessionData(result service.LoginResult) SessionData {
 	return SessionData{
 		CSRFToken: result.CSRFToken,
 		ExpiresAt: result.SessionExpiresAt,
@@ -132,9 +124,7 @@ func newLoginSessionData(
 	}
 }
 
-func newCurrentSessionData(
-	identity service.AuthenticatedIdentity,
-) SessionData {
+func newCurrentSessionData(identity service.AuthenticatedIdentity) SessionData {
 	return SessionData{
 		ExpiresAt: identity.SessionExpiresAt,
 

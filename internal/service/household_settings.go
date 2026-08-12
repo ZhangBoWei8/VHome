@@ -23,18 +23,11 @@ type UpdateProfileInput struct {
 	Version        uint64
 }
 
-func (s *IdentityService) HouseholdSettings(
-	ctx context.Context,
-	actor AuthenticatedIdentity,
-) (model.Household, error) {
+func (s *IdentityService) HouseholdSettings(ctx context.Context, actor AuthenticatedIdentity) (model.Household, error) {
 	return s.repository.GetHouseholdByID(ctx, actor.HouseholdID)
 }
 
-func (s *IdentityService) UpdateHouseholdSettings(
-	ctx context.Context,
-	actor AuthenticatedIdentity,
-	input UpdateHouseholdSettingsInput,
-) (model.Household, error) {
+func (s *IdentityService) UpdateHouseholdSettings(ctx context.Context, actor AuthenticatedIdentity, input UpdateHouseholdSettingsInput) (model.Household, error) {
 	if err := requireOwner(actor); err != nil {
 		return model.Household{}, err
 	}
@@ -60,10 +53,7 @@ func (s *IdentityService) UpdateHouseholdSettings(
 	return household, err
 }
 
-func (s *IdentityService) Profile(
-	ctx context.Context,
-	actor AuthenticatedIdentity,
-) (model.Member, error) {
+func (s *IdentityService) Profile(ctx context.Context, actor AuthenticatedIdentity) (model.Member, error) {
 	member, err := s.repository.GetMemberByID(ctx, actor.MemberID)
 	if err != nil {
 		return model.Member{}, err
@@ -74,11 +64,7 @@ func (s *IdentityService) Profile(
 	return member, nil
 }
 
-func (s *IdentityService) UpdateProfile(
-	ctx context.Context,
-	actor AuthenticatedIdentity,
-	input UpdateProfileInput,
-) (model.Member, error) {
+func (s *IdentityService) UpdateProfile(ctx context.Context, actor AuthenticatedIdentity, input UpdateProfileInput) (model.Member, error) {
 	input.DisplayName = strings.TrimSpace(input.DisplayName)
 	if validateTextLength("display_name", input.DisplayName, 1, 64) != nil ||
 		!input.AvatarKey.Valid() ||

@@ -45,11 +45,7 @@ func New(ctx context.Context, envFile string) (*APP, error) {
 
 	repo := repository.New(db)
 
-	identityService, err :=
-		service.NewIdentityService(
-			repo,
-			cfg.Auth.SessionTTL,
-		)
+	identityService, err := service.NewIdentityService(repo, cfg.Auth.SessionTTL)
 	if err != nil {
 		_ = db.Close()
 

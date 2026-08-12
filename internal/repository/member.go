@@ -73,6 +73,12 @@ type memberScanner interface {
 	Scan(dest ...any) error
 }
 
+type MemberOption struct {
+	ID          uint64
+	DisplayName string
+	AvatarKey   string
+}
+
 func scanMember(scanner memberScanner) (model.Member, error) {
 	var member model.Member
 
@@ -565,4 +571,34 @@ func (r *Repository) UpdateMemberLastLogin(ctx context.Context, memberID uint64)
 	}
 
 	return nil
+}
+
+func (r *Repository) ListActiveMemberOptions(ctx context.Context, householdID uint64) ([]MemberOption, error) {
+	query := `SELECT id,display_name,avatar_key
+	FROM members
+	WHERE household_id = ? AND status = 'ACTIVE'
+	`
+	rows, err := r.q.QueryContext(ctx, query, householdID)
+	if err != nil {
+		return nil, fmt.Errorf("list active member error: %w.", err)
+	}
+	defer rows.Close()
+	members := make([]MemberOption, 0)
+	for rows.Next() {
+		var member MemberOption
+
+		if err := rows.Scan(&member.ID, &member.DisplayName, &member.AvatarKey); err != nil {
+			return nil, fmt.Errorf("unmarshal member information error: %w.", err)
+		}
+		members = append(members, member)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf(
+			"iterate active member options: %w",
+			err,
+		)
+	}
+
+	return members, nil
 }

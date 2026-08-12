@@ -31,10 +31,7 @@ type LoginResult struct {
 	SessionExpiresAt time.Time
 }
 
-func (s *IdentityService) Login(
-	ctx context.Context,
-	input LoginInput,
-) (LoginResult, error) {
+func (s *IdentityService) Login(ctx context.Context, input LoginInput) (LoginResult, error) {
 	input = normalizeLoginInput(input)
 
 	if err := validateLoginInput(input); err != nil {
@@ -71,10 +68,7 @@ func (s *IdentityService) Login(
 		)
 	}
 
-	passwordValid, err := s.passwordHasher.Verify(
-		input.Password,
-		member.PasswordHash,
-	)
+	passwordValid, err := s.passwordHasher.Verify(input.Password, member.PasswordHash)
 	if err != nil {
 		return LoginResult{}, fmt.Errorf(
 			"verify member password: %w",
@@ -130,8 +124,6 @@ func (s *IdentityService) Login(
 				return ErrInvalidCredentials
 			}
 
-			// 密码可能在首次验证后被其他请求修改。
-			// 如果哈希已经变化，不再基于旧密码创建 Session。
 			if currentMember.PasswordHash != member.PasswordHash {
 				return ErrInvalidCredentials
 			}

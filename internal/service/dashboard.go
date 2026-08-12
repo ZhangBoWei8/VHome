@@ -62,10 +62,7 @@ type DashboardSummary struct {
 	Weather        WeatherSummary      `json:"weather"`
 }
 
-func (s *PantryService) Dashboard(
-	ctx context.Context,
-	actor AuthenticatedIdentity,
-) (DashboardSummary, error) {
+func (s *PantryService) Dashboard(ctx context.Context, actor AuthenticatedIdentity) (DashboardSummary, error) {
 	household, err := s.repository.GetHouseholdByID(ctx, actor.HouseholdID)
 	if err != nil {
 		return DashboardSummary{}, err
