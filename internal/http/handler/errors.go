@@ -140,6 +140,15 @@ func writeServiceError(
 	case errors.Is(err, service.ErrMaterialNameExists):
 		response.WriteError(c, http.StatusConflict, "MATERIAL_NAME_EXISTS", "已有同名物料，请直接使用已有品类或更换名称")
 
+	case errors.Is(err, service.ErrFoodNameExists):
+		response.WriteError(c, http.StatusConflict, "FOOD_NAME_EXISTS", "已有同名食品，请直接使用已有食品或更换名称")
+
+	case errors.Is(err, service.ErrFoodRestoreRequired):
+		response.WriteError(c, http.StatusConflict, "FOOD_RESTORE_REQUIRED", "回收站中已有同名食品，请先恢复该食品")
+
+	case errors.Is(err, service.ErrNutritionConfirmationRequired):
+		response.WriteError(c, http.StatusConflict, "NUTRITION_CONFIRMATION_REQUIRED", "热量与三大营养素估算值差异较大，请确认后再保存")
+
 	case errors.Is(err, service.ErrConflict):
 		response.WriteError(c, http.StatusConflict, "VERSION_CONFLICT", "数据已经发生变化，请刷新后重试")
 

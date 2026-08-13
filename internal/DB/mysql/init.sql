@@ -130,6 +130,132 @@ CREATE TABLE IF NOT EXISTS sessions (
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci;
 
+-- 食品营养主数据。foods 负责“这个食品每 100g 含有什么”，不保存某天吃了多少。
+-- 名称使用数据库的 utf8mb4_unicode_ci 排序规则，因此唯一约束同时避免大小写变体重复。
+CREATE TABLE IF NOT EXISTS foods (
+    id                          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    name                        VARCHAR(128) NOT NULL,
+    calories_per_100g           DECIMAL(10,2) NOT NULL,
+    carbohydrate_per_100g       DECIMAL(10,2) NULL,
+    protein_per_100g            DECIMAL(10,2) NULL,
+    fat_per_100g                DECIMAL(10,2) NULL,
+    icon_type                   VARCHAR(16) NOT NULL DEFAULT 'BUILTIN',
+    icon_value                  VARCHAR(255) NOT NULL DEFAULT 'generic-food',
+    source                      VARCHAR(16) NOT NULL DEFAULT 'USER',
+    created_by                  BIGINT UNSIGNED NULL,
+    deleted_by                  BIGINT UNSIGNED NULL,
+    version                     BIGINT UNSIGNED NOT NULL DEFAULT 1,
+    deleted_at                  DATETIME(6) NULL,
+    created_at                  DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at                  DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+                                    ON UPDATE CURRENT_TIMESTAMP(6),
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_foods_name (name),
+    KEY idx_foods_active_name (deleted_at, name),
+    KEY idx_foods_created_by (created_by),
+    KEY idx_foods_deleted_by (deleted_by),
+
+    CONSTRAINT fk_foods_created_by
+        FOREIGN KEY (created_by)
+        REFERENCES members (id)
+        ON UPDATE RESTRICT
+        ON DELETE SET NULL,
+
+    CONSTRAINT fk_foods_deleted_by
+        FOREIGN KEY (deleted_by)
+        REFERENCES members (id)
+        ON UPDATE RESTRICT
+        ON DELETE SET NULL,
+
+    CONSTRAINT chk_foods_calories
+        CHECK (calories_per_100g BETWEEN 0 AND 1000),
+    CONSTRAINT chk_foods_carbohydrate
+        CHECK (carbohydrate_per_100g IS NULL OR carbohydrate_per_100g BETWEEN 0 AND 100),
+    CONSTRAINT chk_foods_protein
+        CHECK (protein_per_100g IS NULL OR protein_per_100g BETWEEN 0 AND 100),
+    CONSTRAINT chk_foods_fat
+        CHECK (fat_per_100g IS NULL OR fat_per_100g BETWEEN 0 AND 100),
+    CONSTRAINT chk_foods_icon_type
+        CHECK (icon_type IN ('BUILTIN', 'UPLOAD')),
+    CONSTRAINT chk_foods_source
+        CHECK (source IN ('BUILTIN', 'USER'))
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci;
+
+-- 饮食记录保存食品快照，而不在读取时重新关联 foods 计算营养。
+-- 因此修改或逻辑删除食品后，过去的饮食统计仍保持记录创建时的结果。
+CREATE TABLE IF NOT EXISTS meal_records (
+    id                              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    member_id                       BIGINT UNSIGNED NOT NULL,
+    meal_date                       DATE NOT NULL,
+    meal_type                       VARCHAR(16) NOT NULL,
+    food_id                         BIGINT UNSIGNED NULL,
+    food_name_snapshot              VARCHAR(128) NOT NULL,
+    icon_type_snapshot              VARCHAR(16) NOT NULL,
+    icon_value_snapshot             VARCHAR(255) NOT NULL,
+    weight_grams                    DECIMAL(12,2) NOT NULL,
+    calories_per_100g_snapshot      DECIMAL(10,2) NOT NULL,
+    carbohydrate_per_100g_snapshot  DECIMAL(10,2) NULL,
+    protein_per_100g_snapshot       DECIMAL(10,2) NULL,
+    fat_per_100g_snapshot           DECIMAL(10,2) NULL,
+    created_by                      BIGINT UNSIGNED NOT NULL,
+    deleted_by                      BIGINT UNSIGNED NULL,
+    version                         BIGINT UNSIGNED NOT NULL DEFAULT 1,
+    deleted_at                      DATETIME(6) NULL,
+    created_at                      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at                      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+                                        ON UPDATE CURRENT_TIMESTAMP(6),
+
+    PRIMARY KEY (id),
+    KEY idx_meal_records_member_date (member_id, meal_date, deleted_at),
+    KEY idx_meal_records_food (food_id),
+    KEY idx_meal_records_created_by (created_by),
+    KEY idx_meal_records_deleted_by (deleted_by),
+
+    CONSTRAINT fk_meal_records_member
+        FOREIGN KEY (member_id)
+        REFERENCES members (id)
+        ON UPDATE RESTRICT
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_meal_records_food
+        FOREIGN KEY (food_id)
+        REFERENCES foods (id)
+        ON UPDATE RESTRICT
+        ON DELETE SET NULL,
+
+    CONSTRAINT fk_meal_records_created_by
+        FOREIGN KEY (created_by)
+        REFERENCES members (id)
+        ON UPDATE RESTRICT
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_meal_records_deleted_by
+        FOREIGN KEY (deleted_by)
+        REFERENCES members (id)
+        ON UPDATE RESTRICT
+        ON DELETE SET NULL,
+
+    CONSTRAINT chk_meal_records_type
+        CHECK (meal_type IN ('BREAKFAST', 'LUNCH', 'DINNER', 'SNACK')),
+    CONSTRAINT chk_meal_records_icon_type
+        CHECK (icon_type_snapshot IN ('BUILTIN', 'UPLOAD')),
+    CONSTRAINT chk_meal_records_weight
+        CHECK (weight_grams > 0 AND weight_grams <= 100000),
+    CONSTRAINT chk_meal_records_calories
+        CHECK (calories_per_100g_snapshot BETWEEN 0 AND 1000),
+    CONSTRAINT chk_meal_records_carbohydrate
+        CHECK (carbohydrate_per_100g_snapshot IS NULL OR carbohydrate_per_100g_snapshot BETWEEN 0 AND 100),
+    CONSTRAINT chk_meal_records_protein
+        CHECK (protein_per_100g_snapshot IS NULL OR protein_per_100g_snapshot BETWEEN 0 AND 100),
+    CONSTRAINT chk_meal_records_fat
+        CHECK (fat_per_100g_snapshot IS NULL OR fat_per_100g_snapshot BETWEEN 0 AND 100)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS storage_locations (
     id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     name         VARCHAR(64) NOT NULL,
@@ -234,3 +360,20 @@ VALUES
     (8, '鸡肉', 'chicken', 'G', 3, NULL, 165, 31, 3.6, 0, 'BUILTIN'),
     (9, '薯片', 'chips', 'PACK', NULL, 180, 536, 7, 35, 53, 'BUILTIN'),
     (10, '水果', 'fruit', 'G', 7, 3, 52, 0.5, 0.2, 14, 'BUILTIN');
+
+-- 初始食品与内置物料使用同一组营养数据，但两张表没有强外键关系：
+-- 物料品类可以独立调整保存周期，饮食食品也可以独立编辑营养信息。
+INSERT IGNORE INTO foods
+    (name, calories_per_100g, carbohydrate_per_100g, protein_per_100g,
+     fat_per_100g, icon_type, icon_value, source)
+VALUES
+    ('牛奶', 65, 4.9, 3.3, 3.6, 'BUILTIN', 'milk', 'BUILTIN'),
+    ('鸡蛋', 144, 2.8, 13.3, 8.8, 'BUILTIN', 'egg', 'BUILTIN'),
+    ('油菜', 18, 2.7, 1.8, 0.5, 'BUILTIN', 'leafy-vegetable', 'BUILTIN'),
+    ('土豆', 81, 17.8, 2.6, 0.2, 'BUILTIN', 'potato', 'BUILTIN'),
+    ('大葱', 27, 4.9, 1.6, 0.4, 'BUILTIN', 'scallion', 'BUILTIN'),
+    ('猪肉', 242, 0, 27.3, 13.9, 'BUILTIN', 'pork', 'BUILTIN'),
+    ('牛肉', 250, 0, 26, 15, 'BUILTIN', 'beef', 'BUILTIN'),
+    ('鸡肉', 165, 0, 31, 3.6, 'BUILTIN', 'chicken', 'BUILTIN'),
+    ('薯片', 536, 53, 7, 35, 'BUILTIN', 'chips', 'BUILTIN'),
+    ('水果', 52, 14, 0.5, 0.2, 'BUILTIN', 'fruit', 'BUILTIN');

@@ -55,6 +55,11 @@ func New(ctx context.Context, envFile string) (*APP, error) {
 		)
 	}
 	pantryService := service.NewPantryService(repo)
+	mealService, err := service.NewMealService(repo)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create meal service: %w", err)
+	}
 
 	setGinMode(cfg.App.Env)
 
@@ -69,6 +74,7 @@ func New(ctx context.Context, envFile string) (*APP, error) {
 		engine,
 		identityService,
 		pantryService,
+		mealService,
 		cfg.Auth,
 	)
 

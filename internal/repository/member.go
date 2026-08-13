@@ -76,7 +76,7 @@ type memberScanner interface {
 type MemberOption struct {
 	ID          uint64
 	DisplayName string
-	AvatarKey   string
+	AvatarKey   model.MemberAvatar
 }
 
 func scanMember(scanner memberScanner) (model.Member, error) {
@@ -577,10 +577,11 @@ func (r *Repository) ListActiveMemberOptions(ctx context.Context, householdID ui
 	query := `SELECT id,display_name,avatar_key
 	FROM members
 	WHERE household_id = ? AND status = 'ACTIVE'
+	ORDER BY created_at ASC, id ASC
 	`
 	rows, err := r.q.QueryContext(ctx, query, householdID)
 	if err != nil {
-		return nil, fmt.Errorf("list active member error: %w.", err)
+		return nil, fmt.Errorf("list active member options: %w", err)
 	}
 	defer rows.Close()
 	members := make([]MemberOption, 0)
@@ -588,7 +589,7 @@ func (r *Repository) ListActiveMemberOptions(ctx context.Context, householdID ui
 		var member MemberOption
 
 		if err := rows.Scan(&member.ID, &member.DisplayName, &member.AvatarKey); err != nil {
-			return nil, fmt.Errorf("unmarshal member information error: %w.", err)
+			return nil, fmt.Errorf("scan active member option: %w", err)
 		}
 		members = append(members, member)
 	}

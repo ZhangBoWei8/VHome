@@ -308,3 +308,119 @@ export const updateProfile = (input: {
   presence_status: PresenceStatus | "";
   version: number;
 }) => request<MemberData>("/members/me/profile", {method:"PATCH",body:JSON.stringify(input)});
+
+export type FoodIconType = "BUILTIN" | "UPLOAD";
+export type FoodSource = "BUILTIN" | "USER";
+export type MealType = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK";
+
+export interface Food {
+  id: number;
+  name: string;
+  calories_per_100g: number;
+  carbohydrate_per_100g: number | null;
+  protein_per_100g: number | null;
+  fat_per_100g: number | null;
+  icon_type: FoodIconType;
+  icon_value: string;
+  source: FoodSource;
+  created_by: number | null;
+  deleted_by: number | null;
+  version: number;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  nutrition_complete: boolean;
+  estimated_calories_per_100g: number | null;
+  nutrition_mismatch: boolean;
+}
+
+export interface MealMemberOption {
+  id: number;
+  display_name: string;
+  avatar_key: MemberAvatar;
+  is_current: boolean;
+}
+
+export interface MealRecord {
+  id: number;
+  member_id: number;
+  meal_date: string;
+  meal_type: MealType;
+  food_id: number | null;
+  food_name_snapshot: string;
+  icon_type_snapshot: FoodIconType;
+  icon_value_snapshot: string;
+  weight_grams: number;
+  calories_per_100g_snapshot: number;
+  carbohydrate_per_100g_snapshot: number | null;
+  protein_per_100g_snapshot: number | null;
+  fat_per_100g_snapshot: number | null;
+  created_by: number;
+  deleted_by: number | null;
+  version: number;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  calories: number;
+  carbohydrate: number | null;
+  protein: number | null;
+  fat: number | null;
+  nutrition_incomplete: boolean;
+}
+
+export interface DailyMealSummary {
+  calories: number;
+  carbohydrate: number;
+  protein: number;
+  fat: number;
+  nutrition_incomplete: boolean;
+  incomplete_record_count: number;
+  record_count: number;
+}
+
+export interface MealDay {
+  date: string;
+  member: MealMemberOption;
+  summary: DailyMealSummary;
+  records: MealRecord[];
+}
+
+export interface MealCalendarDay {
+  date: string;
+  calories: number;
+  record_count: number;
+  nutrition_incomplete: boolean;
+  incomplete_record_count: number;
+}
+
+export interface MealCalendar {
+  member_id: number;
+  month: string;
+  days: MealCalendarDay[];
+}
+
+export interface MealRecordInput {
+  meal_date: string;
+  meal_type: MealType;
+  food_id: number;
+  weight_grams: number;
+  version?: number;
+}
+
+export const listFoods = (scope: "ACTIVE" | "DELETED" = "ACTIVE", keyword = "") => {
+  const query = new URLSearchParams({ scope, keyword });
+  return request<Food[]>(`/foods?${query.toString()}`);
+};
+export const getFood = (id: number) => request<Food>(`/foods/${id}`);
+export const createFood = (form: FormData) => request<Food>("/foods", { method: "POST", body: form });
+export const updateFood = (id: number, form: FormData) => request<Food>(`/foods/${id}`, { method: "PATCH", body: form });
+export const deleteFood = (id: number, version: number) => request<Food>(`/foods/${id}`, { method: "DELETE", body: JSON.stringify({ version }) });
+export const restoreFood = (id: number, version: number) => request<Food>(`/foods/${id}/restore`, { method: "POST", body: JSON.stringify({ version }) });
+
+export const listMealMemberOptions = () => request<MealMemberOption[]>("/meals/member-options");
+export const getMyMealDay = (date: string) => request<MealDay>(`/meals/me?date=${encodeURIComponent(date)}`);
+export const getMyMealCalendar = (month: string) => request<MealCalendar>(`/meals/me/calendar?month=${encodeURIComponent(month)}`);
+export const getMemberMealToday = (memberID: number) => request<MealDay>(`/meals/members/${memberID}/today`);
+export const createMyMealRecord = (input: MealRecordInput) => request<MealRecord>("/meals/me/records", { method: "POST", body: JSON.stringify(input) });
+export const updateMyMealRecord = (id: number, input: MealRecordInput) => request<MealRecord>(`/meals/me/records/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+export const deleteMyMealRecord = (id: number, version: number) => request<void>(`/meals/me/records/${id}`, { method: "DELETE", body: JSON.stringify({ version }) });

@@ -191,15 +191,14 @@ func (s *IdentityService) Login(ctx context.Context, input LoginInput) (LoginRes
 	}, nil
 }
 
-func (s *IdentityService) consumeDummyPasswordCheck(
-	password string,
-) {
+func (s *IdentityService) consumeDummyPasswordCheck(password string) {
 	_, _ = s.passwordHasher.Verify(
 		password,
 		s.dummyPasswordHash,
 	)
 }
 
+// 规范化登录输入
 func normalizeLoginInput(input LoginInput) LoginInput {
 	input.Name = strings.TrimSpace(input.Name)
 	input.UserAgent = strings.TrimSpace(input.UserAgent)
@@ -207,6 +206,7 @@ func normalizeLoginInput(input LoginInput) LoginInput {
 	return input
 }
 
+// 验证登录输入
 func validateLoginInput(input LoginInput) error {
 	if err := validateTextLength(
 		"name",

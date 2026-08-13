@@ -5,6 +5,7 @@ import DashboardHomeView from "@/views/DashboardHomeView.vue";
 import InventoryView from "@/views/InventoryView.vue";
 import MembersView from "@/views/MembersView.vue";
 import LoginView from "@/views/LoginView.vue";
+import MealView from "@/views/MealView.vue";
 import PlaceholderView from "@/views/PlaceholderView.vue";
 import ProfileView from "@/views/ProfileView.vue";
 import SetupView from "@/views/SetupView.vue";
@@ -46,6 +47,12 @@ const router = createRouter({
           name: "inventory",
           component: InventoryView,
           meta: { title: "物料仓库" },
+        },
+        {
+          path: "meals",
+          name: "meals",
+          component: MealView,
+          meta: { title: "饮食日历" },
         },
         {
           path: "members",

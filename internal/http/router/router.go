@@ -9,7 +9,13 @@ import (
 	"vhome/internal/service"
 )
 
-func Register(engine *gin.Engine, identityService *service.IdentityService, pantryService *service.PantryService, authConfig config.AuthConfig) {
+func Register(
+	engine *gin.Engine,
+	identityService *service.IdentityService,
+	pantryService *service.PantryService,
+	mealService *service.MealService,
+	authConfig config.AuthConfig,
+) {
 	bootstrapHandler := handler.NewBootstrapHandler(identityService, authConfig.CookieName)
 
 	identityHandler := handler.NewIdentityHandler(identityService, authConfig.CookieName, authConfig.CookieSecure)
@@ -18,6 +24,7 @@ func Register(engine *gin.Engine, identityService *service.IdentityService, pant
 	requireCSRF := middleware.RequireCSRF(identityService)
 	memberHandler := handler.NewMemberHandler(identityService)
 	pantryHandler := handler.NewPantryHandler(pantryService, "data/uploads")
+	mealHandler := handler.NewMealHandler(mealService, "data/uploads")
 	homeHandler := handler.NewHomeHandler(identityService, pantryService)
 
 	api := engine.Group("/api/v1")
@@ -27,4 +34,6 @@ func Register(engine *gin.Engine, identityService *service.IdentityService, pant
 	registerIdentityRoutes(api, identityHandler, requireSession)
 
 	registerMemberAndPantryRoutes(api, memberHandler, pantryHandler, homeHandler, requireSession, requireCSRF)
+
+	registerMealRoutes(api, mealHandler, requireSession, requireCSRF)
 }
