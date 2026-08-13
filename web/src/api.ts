@@ -287,6 +287,7 @@ export interface DashboardSummary {
   activities: DashboardActivity[];
   members: DashboardMember[];
   weather: WeatherSummary;
+  monthly_expense: HouseholdExpenseSummary;
 }
 export interface HouseholdSettings {
   id: number;
@@ -424,3 +425,94 @@ export const getMemberMealToday = (memberID: number) => request<MealDay>(`/meals
 export const createMyMealRecord = (input: MealRecordInput) => request<MealRecord>("/meals/me/records", { method: "POST", body: JSON.stringify(input) });
 export const updateMyMealRecord = (id: number, input: MealRecordInput) => request<MealRecord>(`/meals/me/records/${id}`, { method: "PATCH", body: JSON.stringify(input) });
 export const deleteMyMealRecord = (id: number, version: number) => request<void>(`/meals/me/records/${id}`, { method: "DELETE", body: JSON.stringify({ version }) });
+
+export type ExpenseScope = "PERSONAL" | "COLLECTIVE";
+export type ExpenseExportView = "MINE" | "COLLECTIVE" | "HOUSEHOLD";
+
+export interface ExpenseCategory {
+  id: number;
+  code: string;
+  name: string;
+  icon_key: string;
+  sort_order: number;
+  is_builtin: boolean;
+  created_at: string;
+}
+
+export interface ExpenseRecord {
+  id: number;
+  household_id: number;
+  member_id: number;
+  category_id: number;
+  expense_scope: ExpenseScope;
+  title: string;
+  amount_cents: number;
+  spent_on: string;
+  note: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  category: ExpenseCategory;
+  member_name: string;
+}
+
+export interface ExpenseCategoryTotal {
+  category: ExpenseCategory;
+  amount_cents: number;
+  percentage: number;
+}
+
+export interface MonthlyExpenseView {
+  month: string;
+  total_amount_cents: number;
+  personal_amount_cents: number;
+  collective_amount_cents: number;
+  category_totals: ExpenseCategoryTotal[];
+  records: ExpenseRecord[];
+}
+
+export interface HouseholdExpenseSummary {
+  month: string;
+  total_amount_cents: number;
+  personal_amount_cents: number;
+  collective_amount_cents: number;
+  previous_month_amount_cents: number;
+  change_percent: number | null;
+}
+
+export interface ExpenseInput {
+  category_id: number;
+  expense_scope: ExpenseScope;
+  title: string;
+  amount: string;
+  spent_on: string;
+  note: string;
+  version?: number;
+}
+
+export const listExpenseCategories = () => request<ExpenseCategory[]>("/expense-categories");
+export const getMyMonthlyExpenses = (month: string) => request<MonthlyExpenseView>(`/expenses/me?month=${encodeURIComponent(month)}`);
+export const getCollectiveMonthlyExpenses = (month: string) => request<MonthlyExpenseView>(`/expenses/collective?month=${encodeURIComponent(month)}`);
+export const createExpense = (input: ExpenseInput) => request<ExpenseRecord>("/expenses", { method: "POST", body: JSON.stringify(input) });
+export const updateExpense = (id: number, input: ExpenseInput) => request<ExpenseRecord>(`/expenses/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+export const deleteExpense = (id: number, version: number) => request<void>(`/expenses/${id}`, { method: "DELETE", body: JSON.stringify({ version }) });
+
+export async function downloadExpenseExport(input: {
+  from: string;
+  to: string;
+  view: ExpenseExportView;
+}): Promise<Blob> {
+  const query = new URLSearchParams(input);
+  const response = await fetch(`${apiBaseURL}/expenses/export?${query.toString()}`, {
+    credentials: "include",
+  });
+  if (!response.ok) {
+    const payload = (await response.json()) as APIEnvelope<never>;
+    throw new APIError(
+      response.status,
+      payload.error?.code ?? "UNKNOWN_ERROR",
+      payload.error?.message ?? "导出失败",
+    );
+  }
+  return response.blob();
+}

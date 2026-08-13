@@ -130,6 +130,92 @@ CREATE TABLE IF NOT EXISTS sessions (
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci;
 
+-- Stable expense categories. V1 exposes these as read-only reference data so
+-- historical records always retain a valid, uniquely named classification.
+CREATE TABLE IF NOT EXISTS expense_categories (
+    id          SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    code        VARCHAR(32) NOT NULL,
+    name        VARCHAR(32) NOT NULL,
+    icon_key    VARCHAR(64) NOT NULL,
+    sort_order  SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    is_builtin  BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at  DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_expense_categories_code (code),
+    UNIQUE KEY uk_expense_categories_name (name)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci;
+
+-- Every month shares one indexed ledger. Monetary values use integer cents to
+-- avoid floating-point rounding, while deleted rows remain available for
+-- audit and a future recycle-bin workflow.
+CREATE TABLE IF NOT EXISTS expense_records (
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    household_id    BIGINT UNSIGNED NOT NULL,
+    member_id       BIGINT UNSIGNED NOT NULL,
+    category_id     SMALLINT UNSIGNED NOT NULL,
+    expense_scope   VARCHAR(16) NOT NULL,
+    title           VARCHAR(128) NOT NULL,
+    amount_cents    BIGINT UNSIGNED NOT NULL,
+    spent_on        DATE NOT NULL,
+    note            VARCHAR(500) NULL,
+    version         BIGINT UNSIGNED NOT NULL DEFAULT 1,
+    deleted_at      DATETIME(6) NULL,
+    deleted_by      BIGINT UNSIGNED NULL,
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+                        ON UPDATE CURRENT_TIMESTAMP(6),
+
+    PRIMARY KEY (id),
+    KEY idx_expense_records_member_date (
+        member_id,
+        deleted_at,
+        spent_on,
+        id
+    ),
+    KEY idx_expense_records_household_date (
+        household_id,
+        deleted_at,
+        spent_on,
+        id
+    ),
+
+    CONSTRAINT fk_expense_records_household
+        FOREIGN KEY (household_id)
+        REFERENCES households (id)
+        ON UPDATE RESTRICT
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_expense_records_member
+        FOREIGN KEY (member_id)
+        REFERENCES members (id)
+        ON UPDATE RESTRICT
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_expense_records_category
+        FOREIGN KEY (category_id)
+        REFERENCES expense_categories (id)
+        ON UPDATE RESTRICT
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_expense_records_deleted_by
+        FOREIGN KEY (deleted_by)
+        REFERENCES members (id)
+        ON UPDATE RESTRICT
+        ON DELETE SET NULL,
+
+    CONSTRAINT chk_expense_records_scope
+        CHECK (expense_scope IN ('PERSONAL', 'COLLECTIVE')),
+    CONSTRAINT chk_expense_records_amount
+        CHECK (amount_cents > 0),
+    CONSTRAINT chk_expense_records_title
+        CHECK (CHAR_LENGTH(TRIM(title)) > 0)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci;
+
 -- 食品营养主数据。foods 负责“这个食品每 100g 含有什么”，不保存某天吃了多少。
 -- 名称使用数据库的 utf8mb4_unicode_ci 排序规则，因此唯一约束同时避免大小写变体重复。
 CREATE TABLE IF NOT EXISTS foods (
@@ -346,6 +432,16 @@ INSERT IGNORE INTO storage_locations (id, name, icon_key, storage_type, is_built
 VALUES (1, '冰箱', 'fridge', 'COLD', TRUE),
        (2, '仓库', 'pantry', 'AMBIENT', TRUE);
 
+INSERT IGNORE INTO expense_categories
+    (id, code, name, icon_key, sort_order, is_builtin)
+VALUES
+    (1, 'LIVING', '生活开销', 'household', 10, TRUE),
+    (2, 'ENTERTAINMENT_SHOPPING', '娱乐/购物消费', 'shopping', 20, TRUE),
+    (3, 'MEDICAL', '医疗支出', 'medical', 30, TRUE),
+    (4, 'TRANSPORTATION', '交通出行', 'transportation', 40, TRUE),
+    (5, 'EDUCATION', '教育支出', 'education', 50, TRUE),
+    (6, 'OTHER', '其他开销', 'other', 60, TRUE);
+
 INSERT IGNORE INTO material_templates
     (id, name, icon_key, default_unit, cold_shelf_life_days, ambient_shelf_life_days,
      calories_per_100g, protein_per_100g, fat_per_100g, carbohydrate_per_100g, source)
@@ -377,3 +473,29 @@ VALUES
     ('鸡肉', 165, 0, 31, 3.6, 'BUILTIN', 'chicken', 'BUILTIN'),
     ('薯片', 536, 53, 7, 35, 'BUILTIN', 'chips', 'BUILTIN'),
     ('水果', 52, 14, 0.5, 0.2, 'BUILTIN', 'fruit', 'BUILTIN');
+
+-- Backfill reusable materials created before food synchronization existed.
+-- A food name already present (including a logically deleted row) is kept as
+-- is, and templates without calories remain pantry-only records.
+INSERT IGNORE INTO foods (
+    name,
+    calories_per_100g,
+    carbohydrate_per_100g,
+    protein_per_100g,
+    fat_per_100g,
+    icon_type,
+    icon_value,
+    source
+)
+SELECT
+    template.name,
+    template.calories_per_100g,
+    template.carbohydrate_per_100g,
+    template.protein_per_100g,
+    template.fat_per_100g,
+    'BUILTIN',
+    template.icon_key,
+    'USER'
+FROM material_templates AS template
+WHERE template.enabled = TRUE
+  AND template.calories_per_100g IS NOT NULL;

@@ -678,6 +678,11 @@ onMounted(load);
             </label>
           </div>
 
+          <p class="form-help">
+            填写每100克热量后，该物料会同步加入食品库；
+            如果食品库已有同名食品，则保留已有食品数据。
+          </p>
+
           <div class="modal-actions">
             <button
               type="button"

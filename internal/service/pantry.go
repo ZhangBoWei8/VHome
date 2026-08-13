@@ -13,11 +13,10 @@ import (
 
 type PantryService struct {
 	repository *repository.Repository
-	weather    *weatherClient
 }
 
 func NewPantryService(r *repository.Repository) *PantryService {
-	return &PantryService{repository: r, weather: newWeatherClient()}
+	return &PantryService{repository: r}
 }
 
 type CreateTemplateInput struct {
@@ -55,6 +54,29 @@ type NotificationSummary struct {
 func canManagePantry(a AuthenticatedIdentity) bool {
 	return a.Role == model.MemberRoleOwner || a.Role == model.MemberRoleAdmin
 }
+
+func validateTemplateNutrition(input CreateTemplateInput) error {
+	if input.Calories != nil {
+		if err := validateNutritionNumber("calories_per_100g", *input.Calories, 0, 1000); err != nil {
+			return err
+		}
+	}
+
+	if err := validateOptionalNutritionNumber("protein_per_100g", input.Protein, 0, 100); err != nil {
+		return err
+	}
+
+	if err := validateOptionalNutritionNumber("fat_per_100g", input.Fat, 0, 100); err != nil {
+		return err
+	}
+
+	if err := validateOptionalNutritionNumber("carbohydrate_per_100g", input.Carbs, 0, 100); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *PantryService) Locations(ctx context.Context) ([]model.StorageLocation, error) {
 	return s.repository.ListStorageLocations(ctx)
 }
@@ -78,25 +100,121 @@ func (s *PantryService) CreateLocation(ctx context.Context, a AuthenticatedIdent
 func (s *PantryService) Templates(ctx context.Context) ([]model.MaterialTemplate, error) {
 	return s.repository.ListMaterialTemplates(ctx)
 }
-func (s *PantryService) CreateTemplate(ctx context.Context, a AuthenticatedIdentity, in CreateTemplateInput) (model.MaterialTemplate, error) {
-	if !canManagePantry(a) {
+func (s *PantryService) CreateTemplate(
+	ctx context.Context,
+	actor AuthenticatedIdentity,
+	input CreateTemplateInput,
+) (model.MaterialTemplate, error) {
+	if !canManagePantry(actor) {
 		return model.MaterialTemplate{}, ErrForbidden
 	}
-	in.Name = strings.TrimSpace(in.Name)
-	if in.Name == "" || (in.ColdDays == nil && in.AmbientDays == nil) {
+
+	input.Name = strings.TrimSpace(input.Name)
+	input.IconKey = strings.TrimSpace(input.IconKey)
+	input.DefaultUnit = strings.TrimSpace(input.DefaultUnit)
+
+	if input.Name == "" ||
+		(input.ColdDays == nil && input.AmbientDays == nil) {
 		return model.MaterialTemplate{}, ErrInvalidInput
 	}
-	if in.IconKey == "" {
-		in.IconKey = "generic-food"
+
+	if err := validateTemplateNutrition(input); err != nil {
+		return model.MaterialTemplate{}, err
 	}
-	if in.DefaultUnit == "" {
-		in.DefaultUnit = "G"
+
+	if input.IconKey == "" {
+		input.IconKey = "generic-food"
 	}
-	v, e := s.repository.CreateMaterialTemplate(ctx, repository.CreateTemplateParams{Name: in.Name, IconKey: in.IconKey, DefaultUnit: in.DefaultUnit, ColdDays: in.ColdDays, AmbientDays: in.AmbientDays, Calories: in.Calories, Protein: in.Protein, Fat: in.Fat, Carbs: in.Carbs})
-	if errors.Is(e, repository.ErrConflict) {
-		return v, ErrMaterialNameExists
+
+	if input.DefaultUnit == "" {
+		input.DefaultUnit = "G"
 	}
-	return v, e
+
+	var createdTemplate model.MaterialTemplate
+
+	err := s.repository.WithinTransaction(
+		ctx,
+		func(txRepository *repository.Repository) error {
+			var err error
+
+			// First create the reusable material template. If any later database
+			// operation fails, the surrounding transaction rolls it back.
+			createdTemplate, err = txRepository.CreateMaterialTemplate(
+				ctx,
+				repository.CreateTemplateParams{
+					Name:        input.Name,
+					IconKey:     input.IconKey,
+					DefaultUnit: input.DefaultUnit,
+					ColdDays:    input.ColdDays,
+					AmbientDays: input.AmbientDays,
+					Calories:    input.Calories,
+					Protein:     input.Protein,
+					Fat:         input.Fat,
+					Carbs:       input.Carbs,
+				},
+			)
+			if err != nil {
+				return err
+			}
+
+			// foods requires calories. A material without calories remains a
+			// pantry-only template instead of becoming an incorrect zero-calorie
+			// food.
+			if input.Calories == nil {
+				return nil
+			}
+
+			// GetFoodByName includes logically deleted rows. Existing food data is
+			// never overwritten, because foods remains the source of truth for
+			// meal nutrition after the initial one-way synchronization.
+			_, err = txRepository.GetFoodByName(ctx, input.Name)
+			switch {
+			case err == nil:
+				return nil
+			case !errors.Is(err, repository.ErrNotFound):
+				return fmt.Errorf("check synchronized food: %w", err)
+			}
+
+			creatorID := actor.MemberID
+			_, err = txRepository.CreateFood(
+				ctx,
+				repository.CreateFoodParams{
+					Name:                input.Name,
+					CaloriesPer100G:     *input.Calories,
+					CarbohydratePer100G: input.Carbs,
+					ProteinPer100G:      input.Protein,
+					FatPer100G:          input.Fat,
+					IconType:            model.FoodIconTypeBuiltin,
+					IconValue:           input.IconKey,
+					Source:              model.FoodSourceUser,
+					CreatedBy:           &creatorID,
+				},
+			)
+
+			// A concurrent request may have inserted the same food after the
+			// lookup. Keeping that row is correct; this request must not overwrite
+			// its nutrition data.
+			if errors.Is(err, repository.ErrConflict) {
+				return nil
+			}
+			if err != nil {
+				return fmt.Errorf("create food from material template: %w", err)
+			}
+
+			return nil
+		},
+	)
+	if errors.Is(err, repository.ErrConflict) {
+		return model.MaterialTemplate{}, ErrMaterialNameExists
+	}
+	if err != nil {
+		return model.MaterialTemplate{}, fmt.Errorf(
+			"create material template transaction: %w",
+			err,
+		)
+	}
+
+	return createdTemplate, nil
 }
 
 func shanghaiToday() time.Time {

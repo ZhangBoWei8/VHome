@@ -12,17 +12,17 @@ import (
 )
 
 type HomeHandler struct {
-	identity *service.IdentityService
-	pantry   *service.PantryService
+	identity  *service.IdentityService
+	dashboard *service.DashboardService
 }
 
-func NewHomeHandler(identity *service.IdentityService, pantry *service.PantryService) *HomeHandler {
-	return &HomeHandler{identity: identity, pantry: pantry}
+func NewHomeHandler(identity *service.IdentityService, dashboard *service.DashboardService) *HomeHandler {
+	return &HomeHandler{identity: identity, dashboard: dashboard}
 }
 
 func (h *HomeHandler) Dashboard(c *gin.Context) {
 	actor, _ := middleware.CurrentIdentity(c)
-	data, err := h.pantry.Dashboard(c.Request.Context(), actor)
+	data, err := h.dashboard.Dashboard(c.Request.Context(), actor)
 	if err != nil {
 		writeServiceError(c, err)
 		return

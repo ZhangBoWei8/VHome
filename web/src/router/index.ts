@@ -6,6 +6,7 @@ import InventoryView from "@/views/InventoryView.vue";
 import MembersView from "@/views/MembersView.vue";
 import LoginView from "@/views/LoginView.vue";
 import MealView from "@/views/MealView.vue";
+import ExpenseView from "@/views/ExpenseView.vue";
 import PlaceholderView from "@/views/PlaceholderView.vue";
 import ProfileView from "@/views/ProfileView.vue";
 import SetupView from "@/views/SetupView.vue";
@@ -53,6 +54,12 @@ const router = createRouter({
           name: "meals",
           component: MealView,
           meta: { title: "饮食日历" },
+        },
+        {
+          path: "expenses",
+          name: "expenses",
+          component: ExpenseView,
+          meta: { title: "家庭记账本" },
         },
         {
           path: "members",

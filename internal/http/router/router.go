@@ -14,6 +14,8 @@ func Register(
 	identityService *service.IdentityService,
 	pantryService *service.PantryService,
 	mealService *service.MealService,
+	expenseService *service.ExpenseService,
+	dashboardService *service.DashboardService,
 	authConfig config.AuthConfig,
 ) {
 	bootstrapHandler := handler.NewBootstrapHandler(identityService, authConfig.CookieName)
@@ -25,7 +27,8 @@ func Register(
 	memberHandler := handler.NewMemberHandler(identityService)
 	pantryHandler := handler.NewPantryHandler(pantryService, "data/uploads")
 	mealHandler := handler.NewMealHandler(mealService, "data/uploads")
-	homeHandler := handler.NewHomeHandler(identityService, pantryService)
+	expenseHandler := handler.NewExpenseHandler(expenseService)
+	homeHandler := handler.NewHomeHandler(identityService, dashboardService)
 
 	api := engine.Group("/api/v1")
 
@@ -36,4 +39,6 @@ func Register(
 	registerMemberAndPantryRoutes(api, memberHandler, pantryHandler, homeHandler, requireSession, requireCSRF)
 
 	registerMealRoutes(api, mealHandler, requireSession, requireCSRF)
+
+	registerExpenseRoutes(api, expenseHandler, requireSession, requireCSRF)
 }

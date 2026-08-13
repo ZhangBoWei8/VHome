@@ -60,6 +60,12 @@ func New(ctx context.Context, envFile string) (*APP, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("create meal service: %w", err)
 	}
+	expenseService, err := service.NewExpenseService(repo)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create expense service: %w", err)
+	}
+	dashboardService := service.NewDashboardService(repo, pantryService, expenseService)
 
 	setGinMode(cfg.App.Env)
 
@@ -75,6 +81,8 @@ func New(ctx context.Context, envFile string) (*APP, error) {
 		identityService,
 		pantryService,
 		mealService,
+		expenseService,
+		dashboardService,
 		cfg.Auth,
 	)
 
