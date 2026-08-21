@@ -484,8 +484,8 @@ onMounted(initialize);
             <small>{{ selectedDate }} · {{ day?.member.display_name ?? currentMember?.display_name }}</small>
           </div>
           <div v-if="viewingSelf" class="date-nav-buttons">
-            <button type="button" aria-label="前一天" @click="changeDate(-1)"><ChevronLeft /></button>
-            <button type="button" :disabled="mySelectedDate >= today" aria-label="后一天" @click="changeDate(1)"><ChevronRight /></button>
+            <button type="button" aria-label="查看前一天饮食" @click="changeDate(-1)"><ChevronLeft /></button>
+            <button type="button" :disabled="mySelectedDate >= today" aria-label="查看后一天饮食" @click="changeDate(1)"><ChevronRight /></button>
           </div>
           <span v-else class="today-only-chip">今日只读</span>
         </section>
@@ -542,8 +542,8 @@ onMounted(initialize);
                   <small v-else class="incomplete-text">部分营养信息未录入</small>
                 </div>
                 <div v-if="viewingSelf" class="meal-record-actions">
-                  <button type="button" aria-label="编辑" @click="openRecordForm(record.meal_type, record)"><Pencil :size="15" /></button>
-                  <button type="button" aria-label="删除" @click="removeRecord(record)"><Trash2 :size="15" /></button>
+                  <button type="button" aria-label="编辑这条饮食记录" data-tooltip-placement="top" @click="openRecordForm(record.meal_type, record)"><Pencil :size="15" /></button>
+                  <button type="button" aria-label="删除这条饮食记录" data-tooltip-placement="top-left" @click="removeRecord(record)"><Trash2 :size="15" /></button>
                 </div>
               </div>
             </div>
@@ -557,9 +557,9 @@ onMounted(initialize);
 
       <aside v-if="viewingSelf" class="pixel-panel meal-calendar-panel">
         <header>
-          <button type="button" aria-label="上个月" @click="shiftMonth(-1)"><ChevronLeft :size="17" /></button>
+          <button type="button" aria-label="查看上个月饮食" @click="shiftMonth(-1)"><ChevronLeft :size="17" /></button>
           <div><p class="panel-kicker">HISTORY</p><strong>{{ calendarTitle }}</strong></div>
-          <button type="button" :disabled="calendarMonth >= today.slice(0, 7)" aria-label="下个月" @click="shiftMonth(1)"><ChevronRight :size="17" /></button>
+          <button type="button" :disabled="calendarMonth >= today.slice(0, 7)" aria-label="查看下个月饮食" data-tooltip-placement="left" @click="shiftMonth(1)"><ChevronRight :size="17" /></button>
         </header>
         <div class="calendar-weekdays"><span v-for="label in ['一','二','三','四','五','六','日']" :key="label">{{ label }}</span></div>
         <div class="calendar-grid">
@@ -586,7 +586,7 @@ onMounted(initialize);
       <section class="modal-card meal-record-modal">
         <header>
           <div><p class="panel-kicker">MEAL ENTRY</p><h2>{{ editingRecord ? "编辑饮食记录" : "记录一餐" }}</h2></div>
-          <button type="button" @click="recordModal = false"><X /></button>
+          <button type="button" aria-label="关闭饮食记录窗口" data-tooltip-placement="left" @click="recordModal = false"><X /></button>
         </header>
         <form class="material-form" @submit.prevent="saveRecord">
           <p v-if="recordError" class="form-message error">{{ recordError }}</p>
@@ -618,7 +618,7 @@ onMounted(initialize);
       <section class="modal-card food-manager-modal">
         <header>
           <div><p class="panel-kicker">FOOD LIBRARY</p><h2>食品管理</h2><small>食品是饮食记录使用的营养数据，不会直接改变物料库存。</small></div>
-          <button type="button" @click="foodManager = false"><X /></button>
+          <button type="button" aria-label="关闭食品管理" data-tooltip-placement="left" @click="foodManager = false"><X /></button>
         </header>
         <div class="food-manager-body">
           <p v-if="foodManagerError" class="form-message error">{{ foodManagerError }}</p>
@@ -648,7 +648,7 @@ onMounted(initialize);
 
     <div v-if="foodFormModal" class="modal-backdrop food-form-layer" @click.self="foodFormModal = false">
       <section class="modal-card material-modal">
-        <header><div><p class="panel-kicker">FOOD PROFILE</p><h2>{{ editingFood ? "编辑食品" : "自定义食品" }}</h2></div><button type="button" @click="foodFormModal = false"><X /></button></header>
+        <header><div><p class="panel-kicker">FOOD PROFILE</p><h2>{{ editingFood ? "编辑食品" : "自定义食品" }}</h2></div><button type="button" aria-label="关闭食品编辑窗口" data-tooltip-placement="left" @click="foodFormModal = false"><X /></button></header>
         <form class="material-form" @submit.prevent="saveFood">
           <p v-if="foodFormError" class="form-message error">{{ foodFormError }}</p>
           <div class="form-grid"><label><span>食品名称</span><input v-model="foodForm.name" maxlength="128" required /></label><label><span>每100克热量（kcal）</span><input v-model="foodForm.calories" type="number" min="0" max="1000" step="0.01" required /></label></div>

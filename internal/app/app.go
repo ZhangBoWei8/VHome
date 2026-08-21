@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
 	"vhome/internal/DB/mysql"
+	"vhome/internal/auth"
 	"vhome/internal/config"
 	"vhome/internal/http/router"
 	"vhome/internal/repository"
@@ -18,6 +20,9 @@ type APP struct {
 	Config config.Config
 	Engine *gin.Engine
 	DB     *sql.DB
+
+	cancelWorkers context.CancelFunc
+	workers       sync.WaitGroup
 }
 
 func New(ctx context.Context, envFile string) (*APP, error) {
@@ -65,7 +70,27 @@ func New(ctx context.Context, envFile string) (*APP, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("create expense service: %w", err)
 	}
-	dashboardService := service.NewDashboardService(repo, pantryService, expenseService)
+	memoService, err := service.NewMemoService(repo)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create memo service: %w", err)
+	}
+	secretBox, err := auth.NewSecretBox(cfg.Security.SecretEncryptionKey)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create notification secret box: %w", err)
+	}
+	notificationService, err := service.NewNotificationService(repo, secretBox)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create notification service: %w", err)
+	}
+	calendarSyncService, err := service.NewCalendarSyncService(repo)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create calendar sync service: %w", err)
+	}
+	dashboardService := service.NewDashboardService(repo, pantryService, expenseService, memoService)
 
 	setGinMode(cfg.App.Env)
 
@@ -82,18 +107,29 @@ func New(ctx context.Context, envFile string) (*APP, error) {
 		pantryService,
 		mealService,
 		expenseService,
+		memoService,
+		notificationService,
+		calendarSyncService,
 		dashboardService,
 		cfg.Auth,
 	)
 
-	return &APP{
-		DB:     db,
-		Engine: engine,
-		Config: cfg,
-	}, nil
+	runtimeContext, cancelWorkers := context.WithCancel(ctx)
+	application := &APP{
+		DB:            db,
+		Engine:        engine,
+		Config:        cfg,
+		cancelWorkers: cancelWorkers,
+	}
+	application.startMemoWorkers(runtimeContext, memoService, notificationService, calendarSyncService)
+	return application, nil
 }
 
 func (a *APP) Close() error {
+	if a.cancelWorkers != nil {
+		a.cancelWorkers()
+		a.workers.Wait()
+	}
 	if a.DB == nil {
 		return nil
 	}

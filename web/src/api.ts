@@ -35,6 +35,8 @@ export interface MemberData {
   status: MemberStatus;
   presence_status: PresenceStatus | "";
   avatar_key: MemberAvatar;
+  email: string | null;
+  phone_e164: string | null;
   version: number;
 }
 
@@ -228,7 +230,11 @@ export interface InventoryItem {
   remaining_days: number; total_days: number;
 }
 export interface MaterialReminder { item_id: number; item_name: string; milestone: string; remaining_days: number; message: string }
-export interface NotificationSummary { pending_members: number; material_reminders: MaterialReminder[] }
+export interface NotificationSummary {
+  pending_members: number;
+  material_reminders: MaterialReminder[];
+  memo_reminders: Memo[];
+}
 
 export const listMembers = () => request<MemberData[]>("/members");
 export const approveMember = (id: number, version: number) => request<MemberData>(`/members/${id}/approve`, { method: "POST", body: JSON.stringify({ version }) });
@@ -307,8 +313,118 @@ export const updateProfile = (input: {
   display_name: string;
   avatar_key: MemberAvatar;
   presence_status: PresenceStatus | "";
+  email: string;
+  phone: string;
   version: number;
 }) => request<MemberData>("/members/me/profile", {method:"PATCH",body:JSON.stringify(input)});
+
+export type SMTPSecurity = "TLS" | "STARTTLS";
+
+export interface NotificationSettings {
+  email_enabled: boolean;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_security: SMTPSecurity;
+  smtp_username: string;
+  smtp_password_configured: boolean;
+  smtp_from_email: string;
+  smtp_from_name: string;
+  sms_enabled: boolean;
+  sms_provider: "TENCENT_CLOUD";
+  sms_secret_id: string;
+  sms_secret_key_configured: boolean;
+  sms_sdk_app_id: string;
+  sms_sign_name: string;
+  sms_template_id: string;
+  sms_available: boolean;
+  encryption_available: boolean;
+  version: number;
+}
+
+export interface NotificationSettingsInput {
+  email_enabled: boolean;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_security: SMTPSecurity;
+  smtp_username: string;
+  smtp_password: string;
+  smtp_from_email: string;
+  smtp_from_name: string;
+  sms_enabled: boolean;
+  sms_secret_id: string;
+  sms_secret_key: string;
+  sms_sdk_app_id: string;
+  sms_sign_name: string;
+  sms_template_id: string;
+  version: number;
+}
+
+export const getNotificationSettings = () =>
+  request<NotificationSettings>("/household/settings/notifications");
+export const updateNotificationSettings = (input: NotificationSettingsInput) =>
+  request<NotificationSettings>("/household/settings/notifications", { method: "PATCH", body: JSON.stringify(input) });
+export const testNotificationEmail = (recipient: string) =>
+  request<void>("/household/settings/notifications/email/test", { method: "POST", body: JSON.stringify({ recipient }) });
+
+export interface MemoMemberOption {
+  id: number;
+  display_name: string;
+  avatar_key: MemberAvatar;
+  is_current: boolean;
+}
+
+export interface Memo {
+  id: number;
+  household_id: number;
+  title: string;
+  description: string;
+  remind_at: string;
+  recipient_ids: number[];
+  created_by: number;
+  email_sent_at: string | null;
+  sms_sent_at: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  can_edit: boolean;
+  can_delete: boolean;
+  can_dismiss: boolean;
+}
+
+export interface CalendarDayOverride {
+  calendar_date: string;
+  day_type: "HOLIDAY" | "TRANSFER_WORKDAY";
+  holiday_name: string;
+  source_url: string;
+  synced_at: string;
+}
+
+export interface MemoCalendar {
+  month: string;
+  memos: Memo[];
+  calendar_overrides: CalendarDayOverride[];
+}
+
+export interface MemoInput {
+  title: string;
+  description: string;
+  remind_at: string;
+  recipient_ids: number[];
+  version?: number;
+}
+
+export const listMemoMemberOptions = () => request<MemoMemberOption[]>("/memos/member-options");
+export const getMyMemoCalendar = (month: string) => request<MemoCalendar>(`/memos/me/calendar?month=${encodeURIComponent(month)}`);
+export const getMyMemos = () => request<Memo[]>("/memos/me?limit=200");
+export const getCreatedMemos = () => request<Memo[]>("/memos/created-by-me?limit=200");
+export const getMemosForDay = (date: string) => request<Memo[]>(`/memos/me/day?date=${encodeURIComponent(date)}`);
+export const searchMyMemos = (keyword: string) => request<Memo[]>(`/memos/me/search?keyword=${encodeURIComponent(keyword)}&limit=100`);
+export const getMemo = (id: number) => request<Memo>(`/memos/${id}`);
+export const createMemo = (input: MemoInput) => request<Memo>("/memos", { method: "POST", body: JSON.stringify(input) });
+export const updateMemo = (id: number, input: MemoInput) => request<Memo>(`/memos/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+export const deleteMemo = (id: number, version: number) => request<void>(`/memos/${id}`, { method: "DELETE", body: JSON.stringify({ version }) });
+export const dismissMemo = (id: number, version: number) => request<Memo>(`/memos/${id}/dismiss`, { method: "POST", body: JSON.stringify({ version }) });
+export const syncHolidayCalendar = (year: number) => request<{ synced_days: number }>("/calendar/sync", { method: "POST", body: JSON.stringify({ year }) });
 
 export type FoodIconType = "BUILTIN" | "UPLOAD";
 export type FoodSource = "BUILTIN" | "USER";

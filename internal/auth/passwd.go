@@ -47,14 +47,7 @@ func (h *PasswordHasher) Hash(password string) (string, error) {
 		return "", fmt.Errorf("generate password salt: %w", err)
 	}
 
-	hash := argon2.IDKey(
-		[]byte(password),
-		salt,
-		h.iterations,
-		h.memory,
-		h.parallelism,
-		h.keyLength,
-	)
+	hash := argon2.IDKey([]byte(password), salt, h.iterations, h.memory, h.parallelism, h.keyLength)
 
 	encodedSalt := base64.RawStdEncoding.EncodeToString(salt)
 	encodedHash := base64.RawStdEncoding.EncodeToString(hash)
@@ -86,10 +79,7 @@ func (h *PasswordHasher) Verify(password string, encodedHash string) (bool, erro
 		uint32(len(expectedHash)),
 	)
 
-	return subtle.ConstantTimeCompare(
-		actualHash,
-		expectedHash,
-	) == 1, nil
+	return subtle.ConstantTimeCompare(actualHash, expectedHash) == 1, nil
 }
 
 func parseArgon2Hash(encodedHash string) (uint32, uint32, uint8, []byte, []byte, error) {

@@ -28,6 +28,13 @@ func Open(ctx context.Context, cfg config.DBConfig) (*sql.DB, error) {
 	driverConfig.DBName = cfg.DBName
 	driverConfig.ParseTime = true
 	driverConfig.Loc = location
+	// DATETIME has no timezone metadata. Keep MySQL CURRENT_TIMESTAMP and the
+	// driver's time.Time encoding in the same configured zone so default
+	// created_at values do not drift by eight hours from explicit business
+	// times such as memo.remind_at.
+	driverConfig.Params = map[string]string{
+		"time_zone": mysqlTimeZoneOffset(location),
+	}
 	driverConfig.Timeout = cfg.ConnectTimeout
 	driverConfig.ReadTimeout = cfg.ReadTimeout
 	driverConfig.WriteTimeout = cfg.WriteTimeout
@@ -52,4 +59,16 @@ func Open(ctx context.Context, cfg config.DBConfig) (*sql.DB, error) {
 
 	return db, nil
 
+}
+
+func mysqlTimeZoneOffset(location *time.Location) string {
+	_, offsetSeconds := time.Now().In(location).Zone()
+	sign := "+"
+	if offsetSeconds < 0 {
+		sign = "-"
+		offsetSeconds = -offsetSeconds
+	}
+	hours := offsetSeconds / 3600
+	minutes := (offsetSeconds % 3600) / 60
+	return fmt.Sprintf("'%s%02d:%02d'", sign, hours, minutes)
 }

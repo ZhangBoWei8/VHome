@@ -23,6 +23,8 @@ const memberColumns = `
 	last_login_at,
 	presence_status,
 	avatar_key,
+	email,
+	phone_e164,
 	version,
 	created_at,
 	updated_at
@@ -60,6 +62,8 @@ type UpdateMemberProfileParams struct {
 	DisplayName    string
 	AvatarKey      model.MemberAvatar
 	PresenceStatus model.PresenceStatus
+	Email          *string
+	PhoneE164      *string
 	Version        uint64
 }
 
@@ -86,6 +90,8 @@ func scanMember(scanner memberScanner) (model.Member, error) {
 	var reviewedAt sql.NullTime
 	var lastLoginAt sql.NullTime
 	var presenceStatus sql.NullString
+	var email sql.NullString
+	var phoneE164 sql.NullString
 
 	err := scanner.Scan(
 		&member.ID,
@@ -101,6 +107,8 @@ func scanMember(scanner memberScanner) (model.Member, error) {
 		&lastLoginAt,
 		&presenceStatus,
 		&member.AvatarKey,
+		&email,
+		&phoneE164,
 		&member.Version,
 		&member.CreatedAt,
 		&member.UpdatedAt,
@@ -125,6 +133,14 @@ func scanMember(scanner memberScanner) (model.Member, error) {
 	}
 	if presenceStatus.Valid {
 		member.PresenceStatus = model.PresenceStatus(presenceStatus.String)
+	}
+	if email.Valid {
+		value := email.String
+		member.Email = &value
+	}
+	if phoneE164.Valid {
+		value := phoneE164.String
+		member.PhoneE164 = &value
 	}
 
 	return member, nil
@@ -460,6 +476,8 @@ func (r *Repository) UpdateMemberProfile(ctx context.Context, params UpdateMembe
 			display_name = ?,
 			avatar_key = ?,
 			presence_status = ?,
+			email = ?,
+			phone_e164 = ?,
 			version = version + 1
 		WHERE id = ?
 		  AND household_id = ?
@@ -472,6 +490,8 @@ func (r *Repository) UpdateMemberProfile(ctx context.Context, params UpdateMembe
 		params.DisplayName,
 		string(params.AvatarKey),
 		presenceValue,
+		nullableMemberContact(params.Email),
+		nullableMemberContact(params.PhoneE164),
 		params.MemberID,
 		params.HouseholdID,
 		params.Version,
@@ -496,6 +516,13 @@ func (r *Repository) UpdateMemberProfile(ctx context.Context, params UpdateMembe
 	}
 
 	return r.GetMemberByID(ctx, params.MemberID)
+}
+
+func nullableMemberContact(value *string) any {
+	if value == nil || *value == "" {
+		return nil
+	}
+	return *value
 }
 
 func (r *Repository) DisableMember(ctx context.Context, params DisableMemberParams) (model.Member, error) {

@@ -21,7 +21,7 @@ func registerMemberAndPantryRoutes(api *gin.RouterGroup, members *handler.Member
 	protected.GET("/storage-locations", pantry.Locations)
 	protected.GET("/material-templates", pantry.Templates)
 	protected.GET("/inventory-items", pantry.Inventory)
-	protected.GET("/notifications", pantry.Notifications)
+	protected.GET("/notifications", home.Notifications)
 	protected.GET("/dashboard", home.Dashboard)
 	protected.GET("/household/settings", home.Settings)
 	protected.GET("/members/me/profile", home.Profile)

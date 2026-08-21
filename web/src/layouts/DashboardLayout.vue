@@ -34,17 +34,17 @@ const collapsed = ref(false);
 const mobileOpen = ref(false);
 const isLoggingOut = ref(false);
 const notificationsOpen = ref(false);
-const notifications = ref<NotificationSummary>({ pending_members: 0, material_reminders: [] });
+const notifications = ref<NotificationSummary>({ pending_members: 0, material_reminders: [], memo_reminders: [] });
 const weather = ref<WeatherSummary>({available:false,city:"",temperature_mean:0,weather_code:0,description:"",icon:"",date:""});
 const today = new Date();
 const currentMonth = new Intl.DateTimeFormat("en-US", { month: "short" }).format(today).toUpperCase();
 const currentDay = today.getDate();
-const notificationCount = computed(() => notifications.value.pending_members + notifications.value.material_reminders.length);
+const notificationCount = computed(() => notifications.value.pending_members + notifications.value.material_reminders.length + notifications.value.memo_reminders.length);
 const roleLabel = computed(() => ({ OWNER: "家庭所有者", ADMIN: "管理员", MEMBER: "家庭成员" }[session.memberRole ?? "MEMBER"]));
 const profileAvatar = computed(() => ({
   man: "👨", woman: "👩", boy: "👦", girl: "👧", dog: "🐶",
 } as Record<string, string>)[session.member?.avatar_key ?? ""] ?? session.initials);
-async function loadNotifications(){try{notifications.value=await getNotifications()}catch{notifications.value={pending_members:0,material_reminders:[]}}}
+async function loadNotifications(){try{notifications.value=await getNotifications()}catch{notifications.value={pending_members:0,material_reminders:[],memo_reminders:[]}}}
 async function readReminder(itemID:number,milestone:string){await readMaterialReminder(itemID,milestone);await loadNotifications()}
 function handleNotificationsChanged(){void loadNotifications()}
 async function loadTopbar(){try{weather.value=(await getDashboard()).weather}catch{weather.value={available:false,city:"",temperature_mean:0,weather_code:0,description:"",icon:"",date:""}}}
@@ -149,6 +149,7 @@ async function logout() {
           class="mobile-close icon-button"
           type="button"
           aria-label="关闭导航"
+          data-tooltip-placement="right"
           @click="mobileOpen = false"
         >
           <X :size="19" />
@@ -172,7 +173,8 @@ async function logout() {
             class="nav-item"
             :class="{ active: isActive(item.to) }"
             type="button"
-            :title="collapsed ? item.label : undefined"
+            :aria-label="collapsed ? item.label : undefined"
+            data-tooltip-placement="right"
             @click="navigate(item.to)"
           >
             <component :is="item.icon" :size="20" :stroke-width="2.2" />
@@ -195,6 +197,7 @@ async function logout() {
           class="logout-button"
           type="button"
           aria-label="退出登录"
+          data-tooltip-placement="top"
           :disabled="isLoggingOut"
           @click="logout"
         >
@@ -206,6 +209,7 @@ async function logout() {
         class="collapse-button"
         type="button"
         :aria-label="collapsed ? '展开导航' : '收起导航'"
+        data-tooltip-placement="right"
         @click="collapsed = !collapsed"
       >
         <ChevronRight v-if="collapsed" :size="17" />
@@ -220,6 +224,7 @@ async function logout() {
             class="mobile-menu icon-button"
             type="button"
             aria-label="打开导航"
+            data-tooltip-placement="right"
             @click="mobileOpen = true"
           >
             <Menu :size="21" />
@@ -242,7 +247,7 @@ async function logout() {
             <small>{{ currentMonth }}</small>
             <strong>{{ currentDay }}</strong>
           </div>
-          <button class="icon-button notification-button" type="button" aria-label="通知" @click="notificationsOpen=!notificationsOpen">
+          <button class="icon-button notification-button" type="button" aria-label="查看家庭提醒" data-tooltip-placement="left" @click="notificationsOpen=!notificationsOpen">
             <Lightbulb :size="20" />
             <i v-if="notificationCount" />
           </button>
@@ -254,9 +259,12 @@ async function logout() {
             <button v-for="n in notifications.material_reminders" :key="`${n.item_id}-${n.milestone}`" class="notice-row" @click="readReminder(n.item_id,n.milestone)">
               <span>⏳</span><p><strong>{{n.item_name}} · {{n.message}}</strong><small>{{n.remaining_days===0?'今天到期':`剩余 ${n.remaining_days} 天`}}，点击标记已读</small></p>
             </button>
+            <button v-for="memo in notifications.memo_reminders" :key="`memo-${memo.id}`" class="notice-row" @click="navigate(`/app/memos?memo=${memo.id}`);notificationsOpen=false">
+              <span>📝</span><p><strong>{{memo.title}}</strong><small>{{new Date(memo.remind_at).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false})}} · 点击查看备忘</small></p>
+            </button>
             <p v-if="!notificationCount" class="notice-empty">暂时没有新的提醒 🌿</p>
           </div>
-          <button class="top-avatar" type="button" aria-label="个人资料" @click="navigate('/app/profile')">
+          <button class="top-avatar" type="button" aria-label="编辑个人资料" data-tooltip-placement="left" @click="navigate('/app/profile')">
             {{ profileAvatar }}
           </button>
         </div>

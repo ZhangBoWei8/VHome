@@ -32,6 +32,8 @@ type AuthenticatedIdentity struct {
 	MemberVersion  uint64
 	PresenceStatus model.PresenceStatus
 	AvatarKey      model.MemberAvatar
+	Email          *string
+	PhoneE164      *string
 
 	csrfTokenHash []byte
 }
@@ -130,6 +132,8 @@ func (s *IdentityService) AuthenticateSession(ctx context.Context, plaintextToke
 		MemberVersion:  member.Version,
 		PresenceStatus: member.PresenceStatus,
 		AvatarKey:      member.AvatarKey,
+		Email:          member.Email,
+		PhoneE164:      member.PhoneE164,
 
 		csrfTokenHash: append(
 			[]byte(nil),

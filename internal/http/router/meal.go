@@ -9,12 +9,7 @@ import (
 // registerMealRoutes keeps read endpoints behind the session middleware and
 // all mutations behind both session and CSRF protection. Meal write routes are
 // deliberately scoped to /meals/me: the client never supplies an owner ID.
-func registerMealRoutes(
-	api *gin.RouterGroup,
-	meal *handler.MealHandler,
-	requireSession gin.HandlerFunc,
-	requireCSRF gin.HandlerFunc,
-) {
+func registerMealRoutes(api *gin.RouterGroup, meal *handler.MealHandler, requireSession gin.HandlerFunc, requireCSRF gin.HandlerFunc) {
 	protected := api.Group("")
 	protected.Use(requireSession)
 

@@ -53,6 +53,8 @@ type MemberData struct {
 	Status         model.MemberStatus   `json:"status"`
 	PresenceStatus model.PresenceStatus `json:"presence_status"`
 	AvatarKey      model.MemberAvatar   `json:"avatar_key"`
+	Email          *string              `json:"email"`
+	PhoneE164      *string              `json:"phone_e164"`
 	Version        uint64               `json:"version"`
 }
 
@@ -94,6 +96,8 @@ func newMemberData(member model.Member) MemberData {
 		Status:         member.Status,
 		PresenceStatus: member.PresenceStatus,
 		AvatarKey:      member.AvatarKey,
+		Email:          member.Email,
+		PhoneE164:      member.PhoneE164,
 		Version:        member.Version,
 	}
 }
@@ -150,6 +154,8 @@ func newCurrentSessionData(identity service.AuthenticatedIdentity) SessionData {
 			Status:         model.MemberStatusActive,
 			PresenceStatus: identity.PresenceStatus,
 			AvatarKey:      identity.AvatarKey,
+			Email:          identity.Email,
+			PhoneE164:      identity.PhoneE164,
 			Version:        identity.MemberVersion,
 		},
 	}

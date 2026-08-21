@@ -24,11 +24,14 @@ var (
 
 	ErrUnauthenticated = errors.New("service: unauthenticated")
 
-	ErrInvalidCSRFToken   = errors.New("service: invalid csrf token")
-	ErrForbidden          = errors.New("service: forbidden")
-	ErrNotFound           = errors.New("service: not found")
-	ErrConflict           = errors.New("service: conflict")
-	ErrMaterialNameExists = errors.New("service: material name already exists")
+	ErrInvalidCSRFToken            = errors.New("service: invalid csrf token")
+	ErrForbidden                   = errors.New("service: forbidden")
+	ErrNotFound                    = errors.New("service: not found")
+	ErrConflict                    = errors.New("service: conflict")
+	ErrMaterialNameExists          = errors.New("service: material name already exists")
+	ErrSecretEncryptionUnavailable = errors.New("service: secret encryption is not configured")
+	ErrNotificationConfiguration   = errors.New("service: notification configuration is incomplete")
+	ErrSMSProviderUnavailable      = errors.New("service: SMS provider is reserved but not enabled")
 )
 
 type IdentityService struct {

@@ -15,6 +15,9 @@ func Register(
 	pantryService *service.PantryService,
 	mealService *service.MealService,
 	expenseService *service.ExpenseService,
+	memoService *service.MemoService,
+	notificationService *service.NotificationService,
+	calendarSyncService *service.CalendarSyncService,
 	dashboardService *service.DashboardService,
 	authConfig config.AuthConfig,
 ) {
@@ -28,6 +31,8 @@ func Register(
 	pantryHandler := handler.NewPantryHandler(pantryService, "data/uploads")
 	mealHandler := handler.NewMealHandler(mealService, "data/uploads")
 	expenseHandler := handler.NewExpenseHandler(expenseService)
+	memoHandler := handler.NewMemoHandler(memoService, calendarSyncService)
+	notificationHandler := handler.NewNotificationHandler(notificationService)
 	homeHandler := handler.NewHomeHandler(identityService, dashboardService)
 
 	api := engine.Group("/api/v1")
@@ -41,4 +46,6 @@ func Register(
 	registerMealRoutes(api, mealHandler, requireSession, requireCSRF)
 
 	registerExpenseRoutes(api, expenseHandler, requireSession, requireCSRF)
+	registerMemoRoutes(api, memoHandler, requireSession, requireCSRF)
+	registerNotificationSettingsRoutes(api, notificationHandler, requireSession, requireCSRF)
 }

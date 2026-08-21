@@ -24,16 +24,40 @@ type DashboardService struct {
 	repository *repository.Repository
 	pantry     *PantryService
 	expense    *ExpenseService
+	memo       *MemoService
 	weather    *weatherClient
 }
 
-func NewDashboardService(repo *repository.Repository, pantry *PantryService, expense *ExpenseService) *DashboardService {
+func NewDashboardService(repo *repository.Repository, pantry *PantryService, expense *ExpenseService, memo *MemoService) *DashboardService {
 	return &DashboardService{
 		repository: repo,
 		pantry:     pantry,
 		expense:    expense,
+		memo:       memo,
 		weather:    newWeatherClient(),
 	}
+}
+
+type DashboardNotificationSummary struct {
+	PendingMembers    uint64             `json:"pending_members"`
+	MaterialReminders []MaterialReminder `json:"material_reminders"`
+	MemoReminders     []MemoView         `json:"memo_reminders"`
+}
+
+func (s *DashboardService) Notifications(ctx context.Context, actor AuthenticatedIdentity) (DashboardNotificationSummary, error) {
+	pantryNotifications, err := s.pantry.Notifications(ctx, actor)
+	if err != nil {
+		return DashboardNotificationSummary{}, err
+	}
+	memos, err := s.memo.DueMemos(ctx, actor, time.Now())
+	if err != nil {
+		return DashboardNotificationSummary{}, err
+	}
+	return DashboardNotificationSummary{
+		PendingMembers:    pantryNotifications.PendingMembers,
+		MaterialReminders: pantryNotifications.MaterialReminders,
+		MemoReminders:     memos,
+	}, nil
 }
 
 type DashboardStorage struct {

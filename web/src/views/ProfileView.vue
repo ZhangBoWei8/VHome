@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BadgeCheck, LockKeyhole, Save, UserRound } from "@lucide/vue";
+import { BadgeCheck, Mail, Phone, Save, UserRound } from "@lucide/vue";
 import { onMounted, ref } from "vue";
 
 import { getProfile, updateProfile, type MemberAvatar, type MemberData, type PresenceStatus } from "@/api";
@@ -11,8 +11,8 @@ const loading = ref(true);
 const saving = ref(false);
 const error = ref("");
 const success = ref("");
-const form = ref<{ displayName: string; avatarKey: MemberAvatar; presenceStatus: PresenceStatus | "" }>({
-  displayName: "", avatarKey: "initials", presenceStatus: "",
+const form = ref<{ displayName: string; avatarKey: MemberAvatar; presenceStatus: PresenceStatus | ""; email: string; phone: string }>({
+  displayName: "", avatarKey: "initials", presenceStatus: "", email: "", phone: "",
 });
 
 const avatars: Array<{ value: MemberAvatar; emoji: string; label: string }> = [
@@ -47,6 +47,8 @@ function applyProfile(value: MemberData) {
     displayName: value.display_name,
     avatarKey: value.avatar_key || "initials",
     presenceStatus: value.presence_status || "",
+    email: value.email ?? "",
+    phone: value.phone_e164 ?? "",
   };
 }
 
@@ -72,6 +74,8 @@ async function save() {
       display_name: form.value.displayName.trim(),
       avatar_key: form.value.avatarKey,
       presence_status: form.value.presenceStatus,
+      email: form.value.email.trim(),
+      phone: form.value.phone.trim(),
       version: profile.value.version,
     });
     applyProfile(updated);
@@ -130,6 +134,19 @@ onMounted(load);
           </div>
         </fieldset>
 
+        <div class="form-grid profile-contact-grid">
+          <label>
+            <span><Mail :size="15" /> 邮箱（可选）</span>
+            <input v-model="form.email" type="email" maxlength="254" placeholder="用于接收备忘录邮件" />
+            <small class="form-help">只有家庭所有者启用邮件通知后才会发送。</small>
+          </label>
+          <label>
+            <span><Phone :size="15" /> 手机号（可选）</span>
+            <input v-model="form.phone" type="tel" maxlength="20" placeholder="例如：13800138000" />
+            <small class="form-help">中国大陆号码会统一保存为 +86 格式；短信功能暂未开放。</small>
+          </label>
+        </div>
+
         <fieldset class="profile-choice-field">
           <legend>当前状态</legend>
           <div class="profile-status-grid">
@@ -149,9 +166,5 @@ onMounted(load);
       </div>
     </form>
 
-    <section class="pixel-panel profile-card profile-coming-soon">
-      <LockKeyhole :size="22" />
-      <div><h2>更多个人配置</h2><p>密码、通知偏好等复杂设置当前暂不开放。</p></div>
-    </section>
   </div>
 </template>

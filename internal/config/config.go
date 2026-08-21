@@ -10,10 +10,11 @@ import (
 )
 
 type Config struct {
-	App  AppConfig
-	HTTP HTTPConfig
-	DB   DBConfig
-	Auth AuthConfig
+	App      AppConfig
+	HTTP     HTTPConfig
+	DB       DBConfig
+	Auth     AuthConfig
+	Security SecurityConfig
 }
 
 type AppConfig struct {
@@ -51,6 +52,13 @@ type AuthConfig struct {
 	CookieSecure bool
 }
 
+// SecurityConfig contains the server-side key used to encrypt notification
+// credentials before they are persisted. The key itself must never be stored
+// in MySQL.
+type SecurityConfig struct {
+	SecretEncryptionKey string
+}
+
 func defaultConfig() Config {
 	return Config{
 		App: AppConfig{
@@ -84,6 +92,7 @@ func defaultConfig() Config {
 			CookieName:   "vhome_session",
 			CookieSecure: false,
 		},
+		Security: SecurityConfig{},
 	}
 }
 
@@ -160,6 +169,10 @@ func LoadConfig(envFile string) (Config, error) {
 	cfg.DB.Password = envString("VHOME_DB_PASSWORD", cfg.DB.Password)
 	cfg.DB.DBName = envString("VHOME_DB_NAME", cfg.DB.DBName)
 	cfg.DB.Location = envString("VHOME_DB_LOCATION", cfg.DB.Location)
+	cfg.Security.SecretEncryptionKey = envString(
+		"VHOME_SECRET_ENCRYPTION_KEY",
+		cfg.Security.SecretEncryptionKey,
+	)
 
 	cfg.DB.Port, err = envInt("VHOME_DB_PORT", cfg.DB.Port)
 	if err != nil {
