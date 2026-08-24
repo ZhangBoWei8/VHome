@@ -30,6 +30,7 @@ type CreateInventoryParams struct {
 	Description, ImagePath        string
 	CreatedBy                     uint64
 }
+
 type UpdateInventoryParams struct {
 	ID, LocationID                uint64
 	Name, IconKey                 string
@@ -39,6 +40,13 @@ type UpdateInventoryParams struct {
 	Calories, Protein, Fat, Carbs *float64
 	Description, ImagePath        string
 	Version                       uint64
+}
+
+type SearchInventoryByNameParams struct {
+	Name  string
+	Scope string
+	Order string
+	Limit int
 }
 
 func nullableValue[T any](v *T) any {
@@ -148,6 +156,35 @@ func (r *Repository) ListMaterialTemplates(ctx context.Context) ([]model.Materia
 	}
 	return out, rows.Err()
 }
+
+func (r *Repository) GetMaterialTemplateByName(ctx context.Context, name string) (model.MaterialTemplate, error) {
+	template, err := scanTemplate(
+		r.q.QueryRowContext(
+			ctx,
+			`
+				SELECT `+templateCols+`
+				FROM material_templates
+				WHERE name = ?
+				  AND enabled = TRUE
+				LIMIT 1
+			`,
+			name,
+		),
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.MaterialTemplate{}, ErrNotFound
+	}
+	if err != nil {
+		return model.MaterialTemplate{}, fmt.Errorf(
+			"get material template by name: %w",
+			err,
+		)
+	}
+
+	return template, nil
+}
+
 func (r *Repository) GetMaterialTemplate(ctx context.Context, id uint64) (model.MaterialTemplate, error) {
 	v, e := scanTemplate(r.q.QueryRowContext(ctx, `SELECT `+templateCols+` FROM material_templates WHERE id=? AND enabled=TRUE`, id))
 	if errors.Is(e, sql.ErrNoRows) {
@@ -218,6 +255,26 @@ func scanInventory(s interface{ Scan(...any) error }) (model.InventoryItem, erro
 	}
 	return v, nil
 }
+
+func scanInventoryRows(rows *sql.Rows) ([]model.InventoryItem, error) {
+	out := make([]model.InventoryItem, 0)
+
+	for rows.Next() {
+		item, err := scanInventory(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan inventory row: %w", err)
+		}
+
+		out = append(out, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate inventory rows: %w", err)
+	}
+
+	return out, nil
+}
+
 func (r *Repository) ListInventory(ctx context.Context, scope, order string) ([]model.InventoryItem, error) {
 	// Inventory dates are household-local calendar dates. VHome currently uses
 	// Asia/Shanghai, so do not let a UTC database session move an item between
@@ -236,16 +293,49 @@ func (r *Repository) ListInventory(ctx context.Context, scope, order string) ([]
 		return nil, e
 	}
 	defer rows.Close()
-	out := make([]model.InventoryItem, 0)
-	for rows.Next() {
-		v, e := scanInventory(rows)
-		if e != nil {
-			return nil, e
-		}
-		out = append(out, v)
-	}
-	return out, rows.Err()
+	return scanInventoryRows(rows)
 }
+
+func (r *Repository) SearchInventoryByName(ctx context.Context, params SearchInventoryByNameParams) ([]model.InventoryItem, error) {
+	if params.Name == "" || params.Limit <= 0 {
+		return nil, ErrInvalidArgument
+	}
+	today := `DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR))`
+	where := `i.status = 'ACTIVE' AND i.expires_on >= ` + today
+	if params.Scope == "expired" {
+		where = `i.status = 'ACTIVE' AND i.expires_on < ` + today
+	}
+
+	direction := "ASC"
+	if params.Order == "desc" {
+		direction = "DESC"
+	}
+
+	query := `
+		SELECT ` + inventoryCols + `
+		FROM inventory_items i
+		JOIN storage_locations l
+		  ON l.id = i.storage_location_id
+		WHERE ` + where + `
+		  AND LOCATE(?, i.name) > 0
+		ORDER BY i.expires_on ` + direction + `, i.id ASC
+		LIMIT ?
+	`
+
+	rows, err := r.q.QueryContext(
+		ctx,
+		query,
+		params.Name,
+		params.Limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search inventory by name: %w", err)
+	}
+	defer rows.Close()
+
+	return scanInventoryRows(rows)
+}
+
 func (r *Repository) GetInventory(ctx context.Context, id uint64) (model.InventoryItem, error) {
 	v, e := scanInventory(r.q.QueryRowContext(ctx, `SELECT `+inventoryCols+` FROM inventory_items i JOIN storage_locations l ON l.id=i.storage_location_id WHERE i.id=?`, id))
 	if errors.Is(e, sql.ErrNoRows) {
@@ -253,6 +343,7 @@ func (r *Repository) GetInventory(ctx context.Context, id uint64) (model.Invento
 	}
 	return v, e
 }
+
 func (r *Repository) CreateInventory(ctx context.Context, p CreateInventoryParams) (model.InventoryItem, error) {
 	res, e := r.q.ExecContext(ctx, `INSERT INTO inventory_items(template_id,storage_location_id,name,icon_key,quantity,unit,stocked_on,expires_on,calories_per_100g,protein_per_100g,fat_per_100g,carbohydrate_per_100g,description,image_path,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, nullableValue(p.TemplateID), p.LocationID, p.Name, p.IconKey, p.Quantity, p.Unit, p.StockedOn, p.ExpiresOn, nullableValue(p.Calories), nullableValue(p.Protein), nullableValue(p.Fat), nullableValue(p.Carbs), nullableText(p.Description), nullableText(p.ImagePath), p.CreatedBy)
 	if e != nil {

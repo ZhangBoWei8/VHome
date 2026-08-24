@@ -26,15 +26,15 @@ func Load() AGConfig {
 
 func defaults() AGConfig {
 	return AGConfig{
-		DefaultProvider: "DeepSeek",
+		DefaultProvider: "deepseek",
 		Providers: map[string]ProviderConfig{
-			"DeepSeek": {
+			"deepseek": {
 				APIKey:  "",
 				BaseURL: "",
 				Model:   "deepseek-v4",
 			},
 			// 简化写法，声明时知道了value中都是ProviderrConfig类型，所以不需要关心后续的类型名
-			"Glm": {
+			"glm": {
 				APIKey:  "",
 				BaseURL: "",
 				Model:   "",
@@ -44,6 +44,9 @@ func defaults() AGConfig {
 }
 
 func applyEnv(cfg *AGConfig) {
+	if value := strings.TrimSpace(os.Getenv("VHOME_AGENT_DEFAULT_PROVIDER")); value != "" {
+		cfg.DefaultProvider = strings.ToLower(value)
+	}
 	for name, provider := range cfg.Providers {
 		envKey := strings.ToUpper(name) + "_APIKEY"
 		envModel := strings.ToUpper(name) + "_MODEL"

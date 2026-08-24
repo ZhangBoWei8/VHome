@@ -25,7 +25,7 @@ if [ ! -f .env ]; then
         printf '%s\n' 'VHOME_ENV=development'
         printf '%s\n' 'VHOME_AUTH_COOKIE_SECURE=false'
         printf '%s\n' 'DEEPSEEK_APIKEY='
-        printf '%s\n' 'DEEPSEEK_MODEL=deepseek-v4'
+        printf '%s\n' 'DEEPSEEK_MODEL=deepseek-v4-flash'
         printf '%s\n' 'DEEPSEEK_BASEURL=https://api.deepseek.com'
         printf '%s\n' 'GLM_APIKEY='
         printf '%s\n' 'GLM_MODEL='
@@ -46,7 +46,7 @@ if ! grep -q '^DEEPSEEK_APIKEY=' .env; then
     umask 077
     {
         printf '%s\n' 'DEEPSEEK_APIKEY='
-        printf '%s\n' 'DEEPSEEK_MODEL=deepseek-v4'
+        printf '%s\n' 'DEEPSEEK_MODEL=deepseek-v4-flash'
         printf '%s\n' 'DEEPSEEK_BASEURL=https://api.deepseek.com'
         printf '%s\n' 'GLM_APIKEY='
         printf '%s\n' 'GLM_MODEL='

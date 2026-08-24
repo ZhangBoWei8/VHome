@@ -11,6 +11,14 @@ import (
 	"vhome/internal/repository"
 )
 
+const (
+	maxInventorySearchNameLength  = 128
+	maxMaterialTemplateNameLength = 64
+	defaultInventoryQueryLimit    = 20
+	maxInventoryQueryLimit        = 50
+	maxInventoryWithinDays        = 365
+)
+
 type PantryService struct {
 	repository *repository.Repository
 }
@@ -24,6 +32,7 @@ type CreateTemplateInput struct {
 	ColdDays, AmbientDays         *int
 	Calories, Protein, Fat, Carbs *float64
 }
+
 type InventoryInput struct {
 	TemplateID                    *uint64
 	LocationID                    uint64
@@ -34,11 +43,13 @@ type InventoryInput struct {
 	Calories, Protein, Fat, Carbs *float64
 	Description, ImagePath        string
 }
+
 type InventoryView struct {
 	model.InventoryItem
 	RemainingDays int `json:"remaining_days"`
 	TotalDays     int `json:"total_days"`
 }
+
 type MaterialReminder struct {
 	ItemID        uint64                  `json:"item_id"`
 	ItemName      string                  `json:"item_name"`
@@ -46,6 +57,7 @@ type MaterialReminder struct {
 	RemainingDays int                     `json:"remaining_days"`
 	Message       string                  `json:"message"`
 }
+
 type NotificationSummary struct {
 	PendingMembers    uint64             `json:"pending_members"`
 	MaterialReminders []MaterialReminder `json:"material_reminders"`
@@ -80,6 +92,7 @@ func validateTemplateNutrition(input CreateTemplateInput) error {
 func (s *PantryService) Locations(ctx context.Context) ([]model.StorageLocation, error) {
 	return s.repository.ListStorageLocations(ctx)
 }
+
 func (s *PantryService) CreateLocation(ctx context.Context, a AuthenticatedIdentity, name, icon string, t model.StorageType) (model.StorageLocation, error) {
 	if !canManagePantry(a) {
 		return model.StorageLocation{}, ErrForbidden
@@ -97,14 +110,36 @@ func (s *PantryService) CreateLocation(ctx context.Context, a AuthenticatedIdent
 	}
 	return v, e
 }
+
 func (s *PantryService) Templates(ctx context.Context) ([]model.MaterialTemplate, error) {
 	return s.repository.ListMaterialTemplates(ctx)
 }
-func (s *PantryService) CreateTemplate(
-	ctx context.Context,
-	actor AuthenticatedIdentity,
-	input CreateTemplateInput,
-) (model.MaterialTemplate, error) {
+
+func (s *PantryService) MaterialTemplateByName(ctx context.Context, name string) (model.MaterialTemplate, error) {
+	name = strings.TrimSpace(name)
+
+	if name == "" || len([]rune(name)) > maxMaterialTemplateNameLength {
+		return model.MaterialTemplate{}, ErrInvalidInput
+	}
+
+	template, err := s.repository.GetMaterialTemplateByName(
+		ctx,
+		name,
+	)
+	if errors.Is(err, repository.ErrNotFound) {
+		return model.MaterialTemplate{}, ErrNotFound
+	}
+	if err != nil {
+		return model.MaterialTemplate{}, fmt.Errorf(
+			"get material template by name: %w",
+			err,
+		)
+	}
+
+	return template, nil
+}
+
+func (s *PantryService) CreateTemplate(ctx context.Context, actor AuthenticatedIdentity, input CreateTemplateInput) (model.MaterialTemplate, error) {
 	if !canManagePantry(actor) {
 		return model.MaterialTemplate{}, ErrForbidden
 	}
@@ -113,8 +148,7 @@ func (s *PantryService) CreateTemplate(
 	input.IconKey = strings.TrimSpace(input.IconKey)
 	input.DefaultUnit = strings.TrimSpace(input.DefaultUnit)
 
-	if input.Name == "" ||
-		(input.ColdDays == nil && input.AmbientDays == nil) {
+	if input.Name == "" || (input.ColdDays == nil && input.AmbientDays == nil) {
 		return model.MaterialTemplate{}, ErrInvalidInput
 	}
 
@@ -222,6 +256,7 @@ func shanghaiToday() time.Time {
 	n := time.Now().In(loc)
 	return time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, loc)
 }
+
 func (s *PantryService) normalizeInventory(ctx context.Context, in InventoryInput) (InventoryInput, error) {
 	if in.StockedOn.IsZero() {
 		in.StockedOn = shanghaiToday()
@@ -283,24 +318,124 @@ func (s *PantryService) normalizeInventory(ctx context.Context, in InventoryInpu
 	}
 	return in, nil
 }
-func (s *PantryService) ListInventory(ctx context.Context, scope, order string) ([]InventoryView, error) {
+
+func normalizeInventoryQuery(scope string, order string) (string, string) {
 	if scope != "expired" {
 		scope = "active"
 	}
+
 	if order != "desc" {
 		order = "asc"
 	}
-	items, e := s.repository.ListInventory(ctx, scope, order)
-	if e != nil {
-		return nil, e
+
+	return scope, order
+}
+
+func normalizeInventoryQueryLimit(limit int) int {
+	if limit <= 0 {
+		return defaultInventoryQueryLimit
 	}
+
+	if limit > maxInventoryQueryLimit {
+		return maxInventoryQueryLimit
+	}
+
+	return limit
+}
+
+func buildInventoryViews(items []model.InventoryItem) []InventoryView {
 	today := shanghaiToday()
 	out := make([]InventoryView, 0, len(items))
-	for _, v := range items {
-		out = append(out, InventoryView{InventoryItem: v, RemainingDays: int(v.ExpiresOn.Sub(today).Hours() / 24), TotalDays: int(v.ExpiresOn.Sub(v.StockedOn).Hours() / 24)})
+
+	for _, item := range items {
+		out = append(out, InventoryView{
+			InventoryItem: item,
+			RemainingDays: int(
+				item.ExpiresOn.Sub(today).Hours() / 24,
+			),
+			TotalDays: int(
+				item.ExpiresOn.Sub(item.StockedOn).Hours() / 24,
+			),
+		})
 	}
+
+	return out
+}
+
+func (s *PantryService) ListInventory(ctx context.Context, scope, order string) ([]InventoryView, error) {
+	scope, order = normalizeInventoryQuery(scope, order)
+
+	items, err := s.repository.ListInventory(ctx, scope, order)
+	if err != nil {
+		return nil, fmt.Errorf("list inventory: %w", err)
+	}
+
+	return buildInventoryViews(items), nil
+}
+
+func (s *PantryService) SearchInventory(ctx context.Context, name string, scope string, order string, limit int) ([]InventoryView, error) {
+	name = strings.TrimSpace(name)
+
+	if name == "" || len([]rune(name)) > maxInventorySearchNameLength {
+		return nil, ErrInvalidInput
+	}
+
+	scope, order = normalizeInventoryQuery(scope, order)
+	limit = normalizeInventoryQueryLimit(limit)
+
+	items, err := s.repository.SearchInventoryByName(
+		ctx,
+		repository.SearchInventoryByNameParams{
+			Name:  name,
+			Scope: scope,
+			Order: order,
+			Limit: limit,
+		},
+	)
+	if errors.Is(err, repository.ErrInvalidArgument) {
+		return nil, ErrInvalidInput
+	}
+	if err != nil {
+		return nil, fmt.Errorf(
+			"search inventory by name: %w",
+			err,
+		)
+	}
+
+	return buildInventoryViews(items), nil
+}
+
+func (s *PantryService) ListExpiringInventory(ctx context.Context, withinDays int, limit int) ([]InventoryView, error) {
+	if withinDays < 0 || withinDays > maxInventoryWithinDays {
+		return nil, ErrInvalidInput
+	}
+
+	limit = normalizeInventoryQueryLimit(limit)
+
+	// 当前库存已经按照最早到期时间升序排列。
+	items, err := s.ListInventory(ctx, "active", "asc")
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]InventoryView, 0, limit)
+
+	for _, item := range items {
+		// ListInventory的active范围不会包含负数剩余天数。
+		// 因为已经按照日期升序排列，超过范围后可以直接停止。
+		if item.RemainingDays > withinDays {
+			break
+		}
+
+		out = append(out, item)
+		if len(out) >= limit {
+			break
+		}
+	}
+
 	return out, nil
 }
+
 func (s *PantryService) CreateInventory(ctx context.Context, a AuthenticatedIdentity, in InventoryInput) (InventoryView, error) {
 	in, e := s.normalizeInventory(ctx, in)
 	if e != nil {
@@ -312,6 +447,7 @@ func (s *PantryService) CreateInventory(ctx context.Context, a AuthenticatedIden
 	}
 	return InventoryView{InventoryItem: v, RemainingDays: int(v.ExpiresOn.Sub(shanghaiToday()).Hours() / 24), TotalDays: int(v.ExpiresOn.Sub(v.StockedOn).Hours() / 24)}, nil
 }
+
 func (s *PantryService) UpdateInventory(ctx context.Context, a AuthenticatedIdentity, id, version uint64, in InventoryInput) (InventoryView, error) {
 	old, e := s.repository.GetInventory(ctx, id)
 	if e != nil {
@@ -331,6 +467,7 @@ func (s *PantryService) UpdateInventory(ctx context.Context, a AuthenticatedIden
 	}
 	return InventoryView{InventoryItem: v, RemainingDays: int(v.ExpiresOn.Sub(shanghaiToday()).Hours() / 24), TotalDays: int(v.ExpiresOn.Sub(v.StockedOn).Hours() / 24)}, e
 }
+
 func (s *PantryService) Discard(ctx context.Context, a AuthenticatedIdentity, id, version uint64, reason string) error {
 	e := s.repository.DiscardInventory(ctx, id, a.MemberID, version, strings.TrimSpace(reason))
 	if errors.Is(e, repository.ErrConflict) {
@@ -358,6 +495,7 @@ func milestoneFor(total, remaining int) (model.ReminderMilestone, bool) {
 	}
 	return "", false
 }
+
 func (s *PantryService) Notifications(ctx context.Context, a AuthenticatedIdentity) (NotificationSummary, error) {
 	var out NotificationSummary
 	if a.Role == model.MemberRoleOwner {
@@ -389,6 +527,7 @@ func (s *PantryService) Notifications(ctx context.Context, a AuthenticatedIdenti
 	}
 	return out, nil
 }
+
 func (s *PantryService) ReadReminder(ctx context.Context, a AuthenticatedIdentity, itemID uint64, m model.ReminderMilestone) error {
 	if m != model.ReminderHalf && m != model.ReminderThreeQuarters && m != model.ReminderLastDay {
 		return ErrInvalidInput

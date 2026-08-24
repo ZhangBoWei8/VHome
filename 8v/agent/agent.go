@@ -1,19 +1,25 @@
 package agent
 
 import (
-	"net/http"
+	"context"
 	"strings"
 	"vhome/8v/llm"
+	"vhome/8v/tools"
+	"vhome/internal/service"
 )
 
 type Agent struct {
-	client  http.Client
+	client  llm.Client
+	tools   *tools.Registry
 	history []llm.Message
 }
 
-func New(client http.Client) *Agent {
+type Factory func() *Agent
+
+func New(client llm.Client, registry *tools.Registry) *Agent {
 	a := &Agent{
 		client: client,
+		tools:  registry,
 		history: []llm.Message{
 			llm.System("You are 8V, a smart family assistant focused on family health, household affairs, inventory management, reminders, and smart home services.")},
 	}
@@ -37,4 +43,34 @@ func (a *Agent) systemPrompt(query string) string {
 	// TODO
 	b.WriteString(query)
 	return b.String()
+}
+
+func (a *Agent) Run(ctx context.Context, actor service.AuthenticatedIdentity, input string) (string, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return "", nil
+	}
+
+	a.history = append(a.history, llm.User(input))
+	for i := 0; i < 4; i++ {
+		resp, err := a.client.Chat(ctx, a.history, a.tools.Definitions())
+		if err != nil {
+			return "", err
+		}
+
+		if len(resp.ToolCalls) == 0 {
+			answer := strings.TrimSpace(resp.Content)
+			a.history = append(a.history, llm.Assistant(answer))
+			return answer, nil
+		}
+		a.history = append(a.history, llm.AssistantWithTools(resp.Content, resp.ToolCalls))
+		for _, call := range resp.ToolCalls {
+			result, err := a.tools.Execute(ctx, tools.Invocation{Actor: actor}, call.Function.Name, string(call.Function.Arguments))
+			if err != nil {
+				result = err.Error()
+			}
+			a.history = append(a.history, llm.ToolResult(call.ID, call.Function.Name, result))
+		}
+	}
+	return "stopped because the tool loop reached its limit", nil
 }

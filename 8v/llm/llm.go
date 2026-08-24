@@ -35,8 +35,8 @@ type RespToolCall struct {
 	ID       string `json:"id"`
 	Type     string `json:"type"`
 	Function struct {
-		Name      string          `json:"name"`
-		Arguments json.RawMessage `json:"arguments"`
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
 	} `json:"function"`
 }
 
@@ -83,7 +83,7 @@ func (c *OpenAICompatiableClient) Chat(ctx context.Context, message []Message, t
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.cfg.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer"+c.cfg.APIKey)
+		req.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
 	}
 
 	resp, err := c.http.Do(req)
@@ -110,13 +110,13 @@ func (c *OpenAICompatiableClient) Chat(ctx context.Context, message []Message, t
 
 	msg := out.Choices[0].Message
 	calls := make([]ToolCall, 0, len(msg.ToolCalls))
-	for _, call := range calls {
+	for _, call := range msg.ToolCalls {
 		calls = append(calls, ToolCall{
 			ID:   call.ID,
 			Type: call.Type,
 			Function: ToolCallFunction{
 				Name:      call.Function.Name,
-				Arguments: call.Function.Arguments,
+				Arguments: json.RawMessage(call.Function.Arguments),
 			},
 		})
 	}

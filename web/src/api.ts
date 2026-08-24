@@ -366,6 +366,16 @@ export const updateNotificationSettings = (input: NotificationSettingsInput) =>
 export const testNotificationEmail = (recipient: string) =>
   request<void>("/household/settings/notifications/email/test", { method: "POST", body: JSON.stringify({ recipient }) });
 
+export interface AgentChatData {
+  answer: string;
+}
+
+export const chatWithAgent = (input: string) =>
+  request<AgentChatData>("/agent/chat", {
+    method: "POST",
+    body: JSON.stringify({ input }),
+  });
+
 export interface MemoMemberOption {
   id: number;
   display_name: string;

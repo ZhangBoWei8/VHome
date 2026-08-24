@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 
 import DashboardLayout from "@/layouts/DashboardLayout.vue";
 import DashboardHomeView from "@/views/DashboardHomeView.vue";
+import AgentView from "@/views/AgentView.vue";
 import InventoryView from "@/views/InventoryView.vue";
 import MembersView from "@/views/MembersView.vue";
 import LoginView from "@/views/LoginView.vue";
@@ -85,6 +86,12 @@ const router = createRouter({
           name: "settings",
           component: SettingsView,
           meta: { title: "家庭设置" },
+        },
+        {
+          path: "agent",
+          name: "agent",
+          component: AgentView,
+          meta: { title: "家庭 Agent" },
         },
         {
           path: ":section",

@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/gin-gonic/gin"
 
+	"vhome/8v/agent"
 	"vhome/internal/config"
 	"vhome/internal/http/handler"
 	"vhome/internal/http/middleware"
@@ -20,6 +21,7 @@ func Register(
 	calendarSyncService *service.CalendarSyncService,
 	dashboardService *service.DashboardService,
 	authConfig config.AuthConfig,
+	agentFactory agent.Factory,
 ) {
 	bootstrapHandler := handler.NewBootstrapHandler(identityService, authConfig.CookieName)
 
@@ -34,6 +36,7 @@ func Register(
 	memoHandler := handler.NewMemoHandler(memoService, calendarSyncService)
 	notificationHandler := handler.NewNotificationHandler(notificationService)
 	homeHandler := handler.NewHomeHandler(identityService, dashboardService)
+	agentHandler := handler.NewAgentHandler(agentFactory)
 
 	api := engine.Group("/api/v1")
 
@@ -48,4 +51,5 @@ func Register(
 	registerExpenseRoutes(api, expenseHandler, requireSession, requireCSRF)
 	registerMemoRoutes(api, memoHandler, requireSession, requireCSRF)
 	registerNotificationSettingsRoutes(api, notificationHandler, requireSession, requireCSRF)
+	registerAgentRoutes(api, agentHandler, requireSession, requireCSRF)
 }

@@ -8,6 +8,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"vhome/8v/agconfig"
+	"vhome/8v/agent"
+	"vhome/8v/llm"
+	"vhome/8v/tools"
 	"vhome/internal/DB/mysql"
 	"vhome/internal/auth"
 	"vhome/internal/config"
@@ -91,6 +95,19 @@ func New(ctx context.Context, envFile string) (*APP, error) {
 		return nil, fmt.Errorf("create calendar sync service: %w", err)
 	}
 	dashboardService := service.NewDashboardService(repo, pantryService, expenseService, memoService)
+	agentConfig := agconfig.Load()
+	llmClient, err := llm.NewClient(agentConfig)
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create agent llm client: %w", err)
+	}
+	toolRegistry := tools.NewRegistry("", tools.Options{
+		Pantry:  pantryService,
+		Expense: expenseService,
+	})
+	agentFactory := func() *agent.Agent {
+		return agent.New(llmClient, toolRegistry)
+	}
 
 	setGinMode(cfg.App.Env)
 
@@ -112,6 +129,7 @@ func New(ctx context.Context, envFile string) (*APP, error) {
 		calendarSyncService,
 		dashboardService,
 		cfg.Auth,
+		agentFactory,
 	)
 
 	runtimeContext, cancelWorkers := context.WithCancel(ctx)
