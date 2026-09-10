@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"vhome/internal/config"
 	"vhome/internal/http/middleware"
 	"vhome/internal/http/response"
 	"vhome/internal/service"
@@ -19,13 +20,13 @@ type IdentityHandler struct {
 	cookies         sessionCookieManager
 }
 
-func NewIdentityHandler(identityService *service.IdentityService, sessionCookie string, cookieSecure bool) *IdentityHandler {
+func NewIdentityHandler(identityService *service.IdentityService, authConfig config.AuthConfig) *IdentityHandler {
 	return &IdentityHandler{
 		identityService: identityService,
 
 		cookies: newSessionCookieManager(
-			sessionCookie,
-			cookieSecure,
+			authConfig.CookieName,
+			authConfig.CookieSecure,
 		),
 	}
 }
@@ -108,6 +109,7 @@ func (h *IdentityHandler) RegisterMember(c *gin.Context) {
 func (h *IdentityHandler) Login(c *gin.Context) {
 	var request LoginRequest
 
+	// 自动读取并解析json到go结构体中
 	if err := c.ShouldBindJSON(&request); err != nil {
 		writeBadRequest(c, err)
 		return
@@ -123,6 +125,7 @@ func (h *IdentityHandler) Login(c *gin.Context) {
 			UserAgent: requestUserAgent(c),
 		},
 	)
+
 	if err != nil {
 		writeServiceError(c, err)
 		return
@@ -143,8 +146,7 @@ func (h *IdentityHandler) Login(c *gin.Context) {
 }
 
 func (h *IdentityHandler) CurrentSession(c *gin.Context) {
-	identity, exists :=
-		middleware.CurrentIdentity(c)
+	identity, exists := middleware.CurrentIdentity(c)
 	if !exists {
 		writeServiceError(
 			c,
@@ -161,8 +163,7 @@ func (h *IdentityHandler) CurrentSession(c *gin.Context) {
 }
 
 func (h *IdentityHandler) Logout(c *gin.Context) {
-	identity, exists :=
-		middleware.CurrentIdentity(c)
+	identity, exists := middleware.CurrentIdentity(c)
 	if !exists {
 		writeServiceError(
 			c,

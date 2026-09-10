@@ -13,10 +13,7 @@ type sessionCookieManager struct {
 	secure      bool
 }
 
-func newSessionCookieManager(
-	sessionName string,
-	secure bool,
-) sessionCookieManager {
+func newSessionCookieManager(sessionName string, secure bool) sessionCookieManager {
 	return sessionCookieManager{
 		sessionName: sessionName,
 		csrfName:    sessionName + "_csrf",
@@ -24,12 +21,7 @@ func newSessionCookieManager(
 	}
 }
 
-func (m sessionCookieManager) Set(
-	c *gin.Context,
-	sessionToken string,
-	csrfToken string,
-	expiresAt time.Time,
-) {
+func (m sessionCookieManager) Set(c *gin.Context, sessionToken string, csrfToken string, expiresAt time.Time) {
 	maxAge := int(
 		time.Until(expiresAt).Seconds(),
 	)
@@ -66,9 +58,7 @@ func (m sessionCookieManager) Set(
 	)
 }
 
-func (m sessionCookieManager) Clear(
-	c *gin.Context,
-) {
+func (m sessionCookieManager) Clear(c *gin.Context) {
 	expiredAt := time.Unix(1, 0).UTC()
 
 	http.SetCookie(

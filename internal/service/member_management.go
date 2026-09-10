@@ -22,6 +22,48 @@ func (s *IdentityService) ListMembers(ctx context.Context, actor AuthenticatedId
 	}
 	return s.repository.ListMembers(ctx, actor.HouseholdID)
 }
+
+// RosterMember is the household roster entry every member is allowed to see.
+// It deliberately omits the credential and audit columns carried by
+// model.Member so that callers cannot leak them.
+type RosterMember struct {
+	ID          uint64               `json:"id"`
+	DisplayName string               `json:"display_name"`
+	Username    string               `json:"username"`
+	Role        model.MemberRole     `json:"role"`
+	Presence    model.PresenceStatus `json:"presence_status"`
+}
+
+// HouseholdRoster lists the active members of the caller's household. Unlike
+// ListMembers it is not restricted to the owner: knowing who lives in the
+// household is ordinary information for everyone in it.
+func (s *IdentityService) HouseholdRoster(ctx context.Context, actor AuthenticatedIdentity) ([]RosterMember, error) {
+	if actor.MemberID == 0 || actor.HouseholdID == 0 {
+		return nil, ErrUnauthenticated
+	}
+
+	members, err := s.repository.ListMembers(ctx, actor.HouseholdID)
+	if err != nil {
+		return nil, fmt.Errorf("list household roster: %w", err)
+	}
+
+	roster := make([]RosterMember, 0, len(members))
+	for _, member := range members {
+		if member.Status != model.MemberStatusActive {
+			continue
+		}
+
+		roster = append(roster, RosterMember{
+			ID:          member.ID,
+			DisplayName: member.DisplayName,
+			Username:    member.Username,
+			Role:        member.Role,
+			Presence:    member.PresenceStatus,
+		})
+	}
+
+	return roster, nil
+}
 func (s *IdentityService) ReviewMember(ctx context.Context, actor AuthenticatedIdentity, id, version uint64, approve bool) (model.Member, error) {
 	if err := requireOwner(actor); err != nil {
 		return model.Member{}, err

@@ -240,9 +240,7 @@ func validateLoginInput(input LoginInput) error {
 	return nil
 }
 
-func validateMemberLoginStatus(
-	status model.MemberStatus,
-) error {
+func validateMemberLoginStatus(status model.MemberStatus) error {
 	switch status {
 	case model.MemberStatusActive:
 		return nil

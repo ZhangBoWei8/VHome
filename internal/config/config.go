@@ -9,12 +9,15 @@ import (
 	"github.com/joho/godotenv"
 )
 
+type EnvFile string
+
 type Config struct {
 	App      AppConfig
 	HTTP     HTTPConfig
 	DB       DBConfig
 	Auth     AuthConfig
 	Security SecurityConfig
+	Storage  StorageConfig
 }
 
 type AppConfig struct {
@@ -59,6 +62,10 @@ type SecurityConfig struct {
 	SecretEncryptionKey string
 }
 
+type StorageConfig struct {
+	UploadDir string
+}
+
 func defaultConfig() Config {
 	return Config{
 		App: AppConfig{
@@ -93,6 +100,9 @@ func defaultConfig() Config {
 			CookieSecure: false,
 		},
 		Security: SecurityConfig{},
+		Storage: StorageConfig{
+			UploadDir: "data/uploads",
+		},
 	}
 }
 
@@ -112,10 +122,10 @@ func loadEnvFile(filename string) error {
 	return nil
 }
 
-func LoadConfig(envFile string) (Config, error) {
+func LoadConfig(envFile EnvFile) (Config, error) {
 	cfg := defaultConfig()
 
-	if err := loadEnvFile(envFile); err != nil {
+	if err := loadEnvFile(string(envFile)); err != nil {
 		return Config{}, err
 	}
 
@@ -262,6 +272,7 @@ func LoadConfig(envFile string) (Config, error) {
 		)
 	}
 
+	cfg.Storage.UploadDir = envString("VHOME_UPLOAD_DIR", cfg.Storage.UploadDir)
 	return cfg, nil
 }
 

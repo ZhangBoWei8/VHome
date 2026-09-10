@@ -1,3 +1,8 @@
+-- HISTORICAL ONLY. This file is no longer executed at runtime.
+-- It is the source of migrations/000001_init_schema.up.sql, which is what
+-- actually creates the schema now, for fresh and existing databases alike.
+-- Schema changes go in migrations/, never here. See migrations/README.md.
+
 SET NAMES utf8mb4;
 SET time_zone = '+08:00';
 

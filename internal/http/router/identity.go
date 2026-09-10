@@ -6,11 +6,7 @@ import (
 	"vhome/internal/http/handler"
 )
 
-func registerIdentityRoutes(
-	api *gin.RouterGroup,
-	identityHandler *handler.IdentityHandler,
-	requireSession gin.HandlerFunc,
-) {
+func registerIdentityRoutes(api *gin.RouterGroup, identityHandler *handler.IdentityHandler, requireSession gin.HandlerFunc) {
 	api.POST(
 		"/setup",
 		identityHandler.Setup,
@@ -23,23 +19,13 @@ func registerIdentityRoutes(
 
 	authRoutes := api.Group("/auth")
 
-	authRoutes.POST(
-		"/sessions",
-		identityHandler.Login,
-	)
+	authRoutes.POST("/sessions", identityHandler.Login)
 
-	protectedAuthRoutes :=
-		authRoutes.Group("")
+	protectedAuthRoutes := authRoutes.Group("")
 
 	protectedAuthRoutes.Use(requireSession)
 
-	protectedAuthRoutes.GET(
-		"/session",
-		identityHandler.CurrentSession,
-	)
+	protectedAuthRoutes.GET("/session", identityHandler.CurrentSession)
 
-	protectedAuthRoutes.DELETE(
-		"/session",
-		identityHandler.Logout,
-	)
+	protectedAuthRoutes.DELETE("/session", identityHandler.Logout)
 }

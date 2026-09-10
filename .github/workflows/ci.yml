@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# A newer push to the same branch makes the running check obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l cmd internal 8v)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # wire_gen.go is generated but committed. If a constructor changed
+      # without regenerating, the build on the server would fail; catch it here.
+      - name: wire is up to date
+        run: |
+          go tool wire ./internal/app
+          git diff --exit-code -- internal/app/wire_gen.go \
+            || { echo "internal/app/wire_gen.go is stale: run 'go tool wire ./internal/app' and commit" >&2; exit 1; }
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test
+        run: go test ./... -race
+
+      # The layering rules the project depends on. Each of these must find
+      # nothing; a hit means a layer boundary was crossed.
+      - name: layering
+        run: |
+          fail=0
+          check() {
+            if grep -rniE "$2" --include='*.go' "$1" >/dev/null 2>&1; then
+              echo "layering violation: $3" >&2
+              grep -rniE "$2" --include='*.go' "$1" >&2
+              fail=1
+            fi
+          }
+          check internal/service 'github.com/gin-gonic/gin' 'service must not import gin'
+          check internal/http/handler '(select |insert into |update .* set )' 'handler must not contain SQL'
+          check internal/repository 'vhome/internal/service' 'repository must not import service'
+          exit $fail
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm --prefix web ci
+
+      # vue-tsc runs as part of the build script, so this type checks too.
+      - run: npm --prefix web run build

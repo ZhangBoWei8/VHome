@@ -13,6 +13,10 @@ import (
 
 var ErrSecretEncryptionUnavailable = errors.New("secret encryption key is not configured")
 
+// EncryptionKey is the base64-encoded AES-256 key. It is a named type so that
+// dependency injection can tell it apart from every other string in the graph.
+type EncryptionKey string
+
 // SecretBox encrypts credentials with AES-256-GCM. A random nonce is stored
 // in front of every ciphertext, so saving the same password twice still
 // produces different database values.
@@ -20,21 +24,21 @@ type SecretBox struct {
 	aead cipher.AEAD
 }
 
-func NewSecretBox(encodedKey string) (*SecretBox, error) {
-	encodedKey = strings.TrimSpace(encodedKey)
+func NewSecretBox(key EncryptionKey) (*SecretBox, error) {
+	encodedKey := strings.TrimSpace(string(key))
 	if encodedKey == "" {
 		return &SecretBox{}, nil
 	}
 
-	key, err := base64.StdEncoding.DecodeString(encodedKey)
+	decoded, err := base64.StdEncoding.DecodeString(encodedKey)
 	if err != nil {
 		return nil, fmt.Errorf("decode secret encryption key: %w", err)
 	}
-	if len(key) != 32 {
+	if len(decoded) != 32 {
 		return nil, errors.New("secret encryption key must decode to exactly 32 bytes")
 	}
 
-	block, err := aes.NewCipher(key)
+	block, err := aes.NewCipher(decoded)
 	if err != nil {
 		return nil, fmt.Errorf("create secret cipher: %w", err)
 	}

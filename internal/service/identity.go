@@ -34,6 +34,10 @@ var (
 	ErrSMSProviderUnavailable      = errors.New("service: SMS provider is reserved but not enabled")
 )
 
+// SessionTTL is how long a login session stays valid. It is a named type so
+// that dependency injection can tell it apart from every other duration.
+type SessionTTL time.Duration
+
 type IdentityService struct {
 	repository     *repository.Repository
 	passwordHasher *auth.PasswordHasher
@@ -42,13 +46,14 @@ type IdentityService struct {
 	dummyPasswordHash string
 }
 
-func NewIdentityService(repo *repository.Repository, sessionTTL time.Duration) (*IdentityService, error) {
+func NewIdentityService(repo *repository.Repository, ttl SessionTTL) (*IdentityService, error) {
 	if repo == nil {
 		return nil, errors.New(
 			"identity service repository is nil",
 		)
 	}
 
+	sessionTTL := time.Duration(ttl)
 	if sessionTTL <= 0 {
 		return nil, errors.New(
 			"identity service session TTL must be positive",

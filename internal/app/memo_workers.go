@@ -17,16 +17,15 @@ const (
 	memoEmailBatchSize = 50
 )
 
-func (a *APP) startMemoWorkers(
-	ctx context.Context,
-	memoService *service.MemoService,
-	notificationService *service.NotificationService,
-	calendarSyncService *service.CalendarSyncService,
-) {
-	a.workers.Add(2)
+func (a *APP) startMemoWorkers(ctx context.Context) {
+	memoService := a.workers.Memo
+	notificationService := a.workers.Notification
+	calendarSyncService := a.workers.Calendar
+
+	a.workerGroup.Add(2)
 
 	go func() {
-		defer a.workers.Done()
+		defer a.workerGroup.Done()
 
 		runMemoEmailDelivery(ctx, memoService, notificationService)
 		ticker := time.NewTicker(memoEmailPollInterval)
@@ -43,7 +42,7 @@ func (a *APP) startMemoWorkers(
 	}()
 
 	go func() {
-		defer a.workers.Done()
+		defer a.workerGroup.Done()
 
 		runMemoMaintenance(ctx, memoService, calendarSyncService)
 		ticker := time.NewTicker(memoMaintenancePeriod)

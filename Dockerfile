@@ -15,6 +15,10 @@ RUN npm run build
 FROM golang:${GO_VERSION}-alpine AS api-builder
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
+# GIT_COMMIT is stamped into the binary so /api/v1/healthz can report which
+# build is actually serving traffic. The deploy script relies on it.
+ARG GIT_COMMIT=dev
+ARG BUILD_TIME=""
 ENV GOPROXY=${GOPROXY} \
     GOSUMDB=${GOSUMDB}
 WORKDIR /src
@@ -25,7 +29,9 @@ COPY internal/ ./internal/
 COPY 8v/ ./8v/
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
-    -ldflags="-s -w" \
+    -ldflags="-s -w \
+      -X vhome/internal/version.Commit=${GIT_COMMIT} \
+      -X vhome/internal/version.BuildTime=${BUILD_TIME}" \
     -o /out/vhome \
     ./cmd
 

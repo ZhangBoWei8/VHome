@@ -1,0 +1,22 @@
+# Local development only. Compose merges this file automatically, so
+# `docker compose up --build` still builds from source on your machine.
+#
+# This file MUST NOT exist on the deployment server: there the images come from
+# the registry and building on the box is exactly what CI/CD removes.
+
+services:
+  api:
+    image: vhome-api:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+      args:
+        GIT_COMMIT: dev
+
+  web:
+    image: vhome-web:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web

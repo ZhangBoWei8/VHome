@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"vhome/internal/config"
 	"vhome/internal/http/middleware"
 	"vhome/internal/http/response"
 	"vhome/internal/model"
@@ -31,8 +32,8 @@ type MealHandler struct {
 	uploadDir string
 }
 
-func NewMealHandler(mealService *service.MealService, uploadDir string) *MealHandler {
-	return &MealHandler{service: mealService, uploadDir: uploadDir}
+func NewMealHandler(mealService *service.MealService, storage config.StorageConfig) *MealHandler {
+	return &MealHandler{service: mealService, uploadDir: storage.UploadDir}
 }
 
 func currentActor(c *gin.Context) service.AuthenticatedIdentity {

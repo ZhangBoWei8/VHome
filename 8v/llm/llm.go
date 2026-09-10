@@ -68,7 +68,7 @@ func (c *OpenAICompatiableClient) Chat(ctx context.Context, message []Message, t
 
 	if len(tools) > 0 {
 		body["tools"] = openAITools(tools)
-		body["tools_choice"] = "auto"
+		body["tool_choice"] = "auto"
 	}
 
 	payload, err := json.Marshal(body)

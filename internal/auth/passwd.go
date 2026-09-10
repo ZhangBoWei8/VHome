@@ -64,8 +64,7 @@ func (h *PasswordHasher) Hash(password string) (string, error) {
 }
 
 func (h *PasswordHasher) Verify(password string, encodedHash string) (bool, error) {
-	memory, iterations, parallelism, salt, expectedHash, err :=
-		parseArgon2Hash(encodedHash)
+	memory, iterations, parallelism, salt, expectedHash, err := parseArgon2Hash(encodedHash)
 	if err != nil {
 		return false, err
 	}

@@ -3,53 +3,27 @@ package router
 import (
 	"github.com/gin-gonic/gin"
 
-	"vhome/8v/agent"
-	"vhome/internal/config"
 	"vhome/internal/http/handler"
 	"vhome/internal/http/middleware"
-	"vhome/internal/service"
 )
 
-func Register(
-	engine *gin.Engine,
-	identityService *service.IdentityService,
-	pantryService *service.PantryService,
-	mealService *service.MealService,
-	expenseService *service.ExpenseService,
-	memoService *service.MemoService,
-	notificationService *service.NotificationService,
-	calendarSyncService *service.CalendarSyncService,
-	dashboardService *service.DashboardService,
-	authConfig config.AuthConfig,
-	agentFactory agent.Factory,
-) {
-	bootstrapHandler := handler.NewBootstrapHandler(identityService, authConfig.CookieName)
-
-	identityHandler := handler.NewIdentityHandler(identityService, authConfig.CookieName, authConfig.CookieSecure)
-
-	requireSession := middleware.RequireSession(identityService, authConfig.CookieName)
-	requireCSRF := middleware.RequireCSRF(identityService)
-	memberHandler := handler.NewMemberHandler(identityService)
-	pantryHandler := handler.NewPantryHandler(pantryService, "data/uploads")
-	mealHandler := handler.NewMealHandler(mealService, "data/uploads")
-	expenseHandler := handler.NewExpenseHandler(expenseService)
-	memoHandler := handler.NewMemoHandler(memoService, calendarSyncService)
-	notificationHandler := handler.NewNotificationHandler(notificationService)
-	homeHandler := handler.NewHomeHandler(identityService, dashboardService)
-	agentHandler := handler.NewAgentHandler(agentFactory)
-
+// Register only mounts routes. Constructing handlers and guards is the
+// injector's job, so adding a service never touches this signature.
+func Register(engine *gin.Engine, h handler.Handlers, g middleware.Guards) {
 	api := engine.Group("/api/v1")
 
-	registerBootstrapRoutes(api, bootstrapHandler)
+	registerHealthRoutes(api, h.Health)
 
-	registerIdentityRoutes(api, identityHandler, requireSession)
+	registerBootstrapRoutes(api, h.Bootstrap)
 
-	registerMemberAndPantryRoutes(api, memberHandler, pantryHandler, homeHandler, requireSession, requireCSRF)
+	registerIdentityRoutes(api, h.Identity, g.Session)
 
-	registerMealRoutes(api, mealHandler, requireSession, requireCSRF)
+	registerMemberAndPantryRoutes(api, h.Member, h.Pantry, h.Home, g.Session, g.CSRF)
 
-	registerExpenseRoutes(api, expenseHandler, requireSession, requireCSRF)
-	registerMemoRoutes(api, memoHandler, requireSession, requireCSRF)
-	registerNotificationSettingsRoutes(api, notificationHandler, requireSession, requireCSRF)
-	registerAgentRoutes(api, agentHandler, requireSession, requireCSRF)
+	registerMealRoutes(api, h.Meal, g.Session, g.CSRF)
+
+	registerExpenseRoutes(api, h.Expense, g.Session, g.CSRF)
+	registerMemoRoutes(api, h.Memo, g.Session, g.CSRF)
+	registerNotificationSettingsRoutes(api, h.Notification, g.Session, g.CSRF)
+	registerAgentRoutes(api, h.Agent, g.Session, g.CSRF)
 }

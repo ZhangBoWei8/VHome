@@ -10,10 +10,7 @@ import (
 	"vhome/internal/service"
 )
 
-func writeBadRequest(
-	c *gin.Context,
-	err error,
-) {
+func writeBadRequest(c *gin.Context, err error) {
 	_ = c.Error(err)
 
 	response.WriteError(
@@ -24,10 +21,7 @@ func writeBadRequest(
 	)
 }
 
-func writeServiceError(
-	c *gin.Context,
-	err error,
-) {
+func writeServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrMemoTimeInvalid):
 		response.WriteError(c, http.StatusUnprocessableEntity, "MEMO_TIME_INVALID", "提醒时间必须晚于当前时间，并以30分钟为单位")
