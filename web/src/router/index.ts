@@ -2,9 +2,13 @@ import { createRouter, createWebHistory } from "vue-router";
 
 import DashboardLayout from "@/layouts/DashboardLayout.vue";
 import DashboardHomeView from "@/views/DashboardHomeView.vue";
+import AgentView from "@/views/AgentView.vue";
 import InventoryView from "@/views/InventoryView.vue";
 import MembersView from "@/views/MembersView.vue";
 import LoginView from "@/views/LoginView.vue";
+import MealView from "@/views/MealView.vue";
+import ExpenseView from "@/views/ExpenseView.vue";
+import MemoView from "@/views/MemoView.vue";
 import PlaceholderView from "@/views/PlaceholderView.vue";
 import ProfileView from "@/views/ProfileView.vue";
 import SetupView from "@/views/SetupView.vue";
@@ -48,6 +52,24 @@ const router = createRouter({
           meta: { title: "物料仓库" },
         },
         {
+          path: "meals",
+          name: "meals",
+          component: MealView,
+          meta: { title: "饮食日历" },
+        },
+        {
+          path: "expenses",
+          name: "expenses",
+          component: ExpenseView,
+          meta: { title: "家庭记账本" },
+        },
+        {
+          path: "memos",
+          name: "memos",
+          component: MemoView,
+          meta: { title: "家庭备忘" },
+        },
+        {
           path: "members",
           name: "members",
           component: MembersView,
@@ -64,6 +86,12 @@ const router = createRouter({
           name: "settings",
           component: SettingsView,
           meta: { title: "家庭设置" },
+        },
+        {
+          path: "agent",
+          name: "agent",
+          component: AgentView,
+          meta: { title: "家庭 Agent" },
         },
         {
           path: ":section",

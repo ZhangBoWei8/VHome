@@ -32,16 +32,14 @@ type AuthenticatedIdentity struct {
 	MemberVersion  uint64
 	PresenceStatus model.PresenceStatus
 	AvatarKey      model.MemberAvatar
+	Email          *string
+	PhoneE164      *string
 
 	csrfTokenHash []byte
 }
 
-func (s *IdentityService) AuthenticateSession(
-	ctx context.Context,
-	plaintextToken string,
-) (AuthenticatedIdentity, error) {
-	if plaintextToken == "" ||
-		len(plaintextToken) > maxOpaqueTokenLength {
+func (s *IdentityService) AuthenticateSession(ctx context.Context, plaintextToken string) (AuthenticatedIdentity, error) {
+	if plaintextToken == "" || len(plaintextToken) > maxOpaqueTokenLength {
 		return AuthenticatedIdentity{},
 			ErrUnauthenticated
 	}
@@ -134,6 +132,8 @@ func (s *IdentityService) AuthenticateSession(
 		MemberVersion:  member.Version,
 		PresenceStatus: member.PresenceStatus,
 		AvatarKey:      member.AvatarKey,
+		Email:          member.Email,
+		PhoneE164:      member.PhoneE164,
 
 		csrfTokenHash: append(
 			[]byte(nil),
@@ -142,10 +142,7 @@ func (s *IdentityService) AuthenticateSession(
 	}, nil
 }
 
-func (s *IdentityService) VerifyCSRFToken(
-	identity AuthenticatedIdentity,
-	plaintextToken string,
-) error {
+func (s *IdentityService) VerifyCSRFToken(identity AuthenticatedIdentity, plaintextToken string) error {
 	if plaintextToken == "" ||
 		len(plaintextToken) > maxOpaqueTokenLength {
 		return ErrInvalidCSRFToken
@@ -161,23 +158,12 @@ func (s *IdentityService) VerifyCSRFToken(
 	return nil
 }
 
-func (s *IdentityService) Logout(
-	ctx context.Context,
-	identity AuthenticatedIdentity,
-	csrfToken string,
-) error {
-	if err := s.VerifyCSRFToken(
-		identity,
-		csrfToken,
-	); err != nil {
+func (s *IdentityService) Logout(ctx context.Context, identity AuthenticatedIdentity, csrfToken string) error {
+	if err := s.VerifyCSRFToken(identity, csrfToken); err != nil {
 		return err
 	}
 
-	if err := s.repository.RevokeSession(
-		ctx,
-		identity.SessionID,
-		model.SessionRevokeReasonLogout,
-	); err != nil {
+	if err := s.repository.RevokeSession(ctx, identity.SessionID, model.SessionRevokeReasonLogout); err != nil {
 		return fmt.Errorf(
 			"logout session: %w",
 			err,

@@ -1,5 +1,10 @@
 name: vhome
 
+# Production topology: every application container is pulled by tag, never
+# built here. Local development adds the build stanzas back through
+# compose.override.yaml, which Compose merges automatically and which is not
+# present on the server.
+
 services:
   mysql:
     image: mysql:8.0
@@ -17,7 +22,6 @@ services:
       - "127.0.0.1:${VHOME_MYSQL_HOST_PORT:-3307}:3306"
     volumes:
       - vhome_mysql_data:/var/lib/mysql
-      - ./internal/DB/mysql/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro,Z
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 5s
@@ -27,12 +31,25 @@ services:
     networks:
       - vhome_internal
 
+  # One-shot: brings the schema up to date, then exits. The API waits for it to
+  # finish successfully, so new code never meets an old schema.
+  migrate:
+    image: migrate/migrate:v4.19.0
+    restart: "no"
+    command:
+      - -path=/migrations
+      - -database=mysql://${VHOME_MYSQL_USER:-vhome}:${VHOME_MYSQL_PASSWORD:?VHOME_MYSQL_PASSWORD is required}@tcp(mysql:3306)/${VHOME_MYSQL_DATABASE:-vhome}?multiStatements=true
+      - up
+    volumes:
+      - ./migrations:/migrations:ro,Z
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - vhome_internal
+
   api:
-    image: vhome-api:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: api
+    image: ${VHOME_IMAGE_REGISTRY:-vhome}/vhome-api:${VHOME_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       VHOME_ENV: ${VHOME_ENV:-development}
@@ -58,15 +75,24 @@ services:
       VHOME_AUTH_SESSION_TTL: 336h
       VHOME_AUTH_COOKIE_NAME: vhome_session
       VHOME_AUTH_COOKIE_SECURE: ${VHOME_AUTH_COOKIE_SECURE:-false}
+      VHOME_SECRET_ENCRYPTION_KEY: ${VHOME_SECRET_ENCRYPTION_KEY:?VHOME_SECRET_ENCRYPTION_KEY is required}
+      DEEPSEEK_APIKEY: ${DEEPSEEK_APIKEY:?DEEPSEEK_APIKEY is required}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:?DEEPSEEK_MODEL is required}
+      DEEPSEEK_BASEURL: ${DEEPSEEK_BASEURL:?DEEPSEEK_BASEURL is required}
+      GLM_APIKEY: ${GLM_APIKEY:-}
+      GLM_MODEL: ${GLM_MODEL:-}
+      GLM_BASEURL: ${GLM_BASEURL:-}
     volumes:
       - vhome_uploads:/app/data/uploads
     depends_on:
       mysql:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     expose:
       - "8080"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/bootstrap"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/healthz"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -75,11 +101,7 @@ services:
       - vhome_internal
 
   web:
-    image: vhome-web:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: web
+    image: ${VHOME_IMAGE_REGISTRY:-vhome}/vhome-web:${VHOME_IMAGE_TAG:-latest}
     restart: unless-stopped
     ports:
       - "${VHOME_WEB_PORT:-5173}:5173"

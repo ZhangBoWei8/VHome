@@ -174,6 +174,7 @@ function switchMode() {
               class="password-toggle"
               type="button"
               :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+              data-tooltip-placement="left"
               @click="showPassword = !showPassword"
             >
               <EyeOff v-if="showPassword" :size="18" />

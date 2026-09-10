@@ -563,7 +563,7 @@ onMounted(load);
             <h2>新增物料</h2>
             <small>创建可永久复用的物料品类</small>
           </div>
-          <button type="button" @click="templateModal = false"><X /></button>
+          <button type="button" aria-label="关闭新增物料窗口" data-tooltip-placement="left" @click="templateModal = false"><X /></button>
         </header>
 
         <form class="material-form" @submit.prevent="addTemplate">
@@ -678,6 +678,11 @@ onMounted(load);
             </label>
           </div>
 
+          <p class="form-help">
+            填写每100克热量后，该物料会同步加入食品库；
+            如果食品库已有同名食品，则保留已有食品数据。
+          </p>
+
           <div class="modal-actions">
             <button
               type="button"
@@ -696,7 +701,7 @@ onMounted(load);
       <section class="modal-card material-modal">
         <header>
           <h2>{{ editing ? "编辑库存" : "添加库存" }}</h2>
-          <button @click="modal = false"><X /></button>
+          <button type="button" :aria-label="editing ? '关闭编辑库存窗口' : '关闭添加库存窗口'" data-tooltip-placement="left" @click="modal = false"><X /></button>
         </header>
 
         <form class="material-form" @submit.prevent="save">

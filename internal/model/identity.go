@@ -127,6 +127,8 @@ type Member struct {
 	LastLoginAt        *time.Time
 	PresenceStatus     PresenceStatus
 	AvatarKey          MemberAvatar
+	Email              *string
+	PhoneE164          *string
 	Version            uint64
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

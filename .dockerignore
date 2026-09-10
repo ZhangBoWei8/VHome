@@ -11,3 +11,7 @@ web/node_modules
 web/dist
 **/*_test.go
 **/*.log
+.github
+migrations
+compose.override.yaml
+deploy.sh

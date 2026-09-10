@@ -1,0 +1,89 @@
+name: Deploy
+
+on:
+  # Start with manual runs only. Once a few deploys have gone through cleanly,
+  # uncomment the push trigger to deploy every merge to main.
+  #
+  # push:
+  #   branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "要部署的 commit SHA 或分支，留空则用 main 的最新提交"
+        required: false
+        default: ""
+
+# Deploys must never overlap, and a running deploy must never be cancelled
+# halfway through.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ${{ vars.VHOME_IMAGE_REGISTRY }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        target: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - id: meta
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      # With GHCR the fallbacks work out of the box and no secret is needed.
+      # For any other registry set the two secrets.
+      - name: Log in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.VHOME_REGISTRY_HOST }}
+          username: ${{ secrets.VHOME_REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.VHOME_REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/vhome-${{ matrix.target }}:${{ steps.meta.outputs.sha }}
+            ${{ env.REGISTRY }}/vhome-${{ matrix.target }}:latest
+          build-args: |
+            GIT_COMMIT=${{ steps.meta.outputs.sha }}
+            BUILD_TIME=${{ steps.meta.outputs.built_at }}
+            GOPROXY=https://proxy.golang.org,direct
+            GOSUMDB=sum.golang.org
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+  deploy:
+    name: Deploy to production
+    needs: build
+    runs-on: [self-hosted, vhome-prod]
+    steps:
+      - id: meta
+        run: |
+          if [ -n "${{ inputs.ref }}" ]; then
+            echo "sha=${{ inputs.ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The deployment directory on the server is a git clone that also holds
+      # the private .env. The script checks out the requested commit there so
+      # compose.yaml and the migrations always match the image being deployed.
+      - name: Roll out
+        run: ${{ vars.VHOME_DEPLOY_DIR }}/deploy/deploy-remote.sh "${{ steps.meta.outputs.sha }}"

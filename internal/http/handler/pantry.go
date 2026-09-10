@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"vhome/internal/config"
 	"vhome/internal/http/middleware"
 	"vhome/internal/http/response"
 	"vhome/internal/model"
@@ -24,9 +25,10 @@ type PantryHandler struct {
 	uploadDir string
 }
 
-func NewPantryHandler(s *service.PantryService, dir string) *PantryHandler {
-	return &PantryHandler{service: s, uploadDir: dir}
+func NewPantryHandler(s *service.PantryService, storage config.StorageConfig) *PantryHandler {
+	return &PantryHandler{service: s, uploadDir: storage.UploadDir}
 }
+
 func (h *PantryHandler) Locations(c *gin.Context) {
 	v, e := h.service.Locations(c.Request.Context())
 	if e != nil {

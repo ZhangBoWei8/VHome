@@ -3,107 +3,49 @@ package app
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
-	"vhome/internal/DB/mysql"
 	"vhome/internal/config"
-	"vhome/internal/http/router"
-	"vhome/internal/repository"
-	"vhome/internal/service"
 )
 
 type APP struct {
 	Config config.Config
 	Engine *gin.Engine
 	DB     *sql.DB
+
+	workers       Workers
+	cancelWorkers context.CancelFunc
+	workerGroup   sync.WaitGroup
 }
 
-func New(ctx context.Context, envFile string) (*APP, error) {
-	cfg, err := config.LoadConfig(envFile)
+// New builds the application. Every dependency is resolved by the generated
+// injector; this function only owns what wire deliberately does not: starting
+// and stopping the background workers.
+//
+// The returned cleanup releases the resources the injector acquired (currently
+// the database pool) and must be called after Close.
+func New(ctx context.Context, envFile config.EnvFile) (*APP, func(), error) {
+	application, cleanup, err := InitializeAPP(ctx, envFile)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to load config: %w",
-			err,
-		)
+		return nil, nil, err
 	}
 
-	databaseCtx, cancel := context.WithTimeout(
-		ctx,
-		cfg.DB.ConnectTimeout,
-	)
-	defer cancel()
+	runtimeContext, cancelWorkers := context.WithCancel(ctx)
+	application.cancelWorkers = cancelWorkers
+	application.startMemoWorkers(runtimeContext)
 
-	db, err := mysql.Open(databaseCtx, cfg.DB)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to open database: %w",
-			err,
-		)
-	}
-
-	repo := repository.New(db)
-
-	identityService, err :=
-		service.NewIdentityService(
-			repo,
-			cfg.Auth.SessionTTL,
-		)
-	if err != nil {
-		_ = db.Close()
-
-		return nil, fmt.Errorf(
-			"create identity service: %w",
-			err,
-		)
-	}
-	pantryService := service.NewPantryService(repo)
-
-	setGinMode(cfg.App.Env)
-
-	engine := gin.Default()
-	if err := engine.SetTrustedProxies(nil); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("disable untrusted proxy headers: %w", err)
-	}
-	engine.Static("/uploads", "data/uploads")
-
-	router.Register(
-		engine,
-		identityService,
-		pantryService,
-		cfg.Auth,
-	)
-
-	return &APP{
-		DB:     db,
-		Engine: engine,
-		Config: cfg,
-	}, nil
+	return application, cleanup, nil
 }
 
+// Close stops the background workers. The database pool is closed by the
+// cleanup function returned from New.
 func (a *APP) Close() error {
-	if a.DB == nil {
-		return nil
-	}
-
-	if err := a.DB.Close(); err != nil {
-		return err
+	if a.cancelWorkers != nil {
+		a.cancelWorkers()
+		a.workerGroup.Wait()
 	}
 
 	return nil
-}
-
-func setGinMode(env string) {
-	switch env {
-	case "production":
-		gin.SetMode(gin.ReleaseMode)
-
-	case "development":
-		gin.SetMode(gin.DebugMode)
-
-	default:
-		gin.SetMode(gin.TestMode)
-	}
 }

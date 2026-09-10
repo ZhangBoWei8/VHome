@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log/slog"
 	"os"
+
 	"vhome/internal/bootstrap"
 )
 
@@ -15,11 +16,13 @@ func main() {
 	)
 	flag.Parse()
 
-	app, err := bootstrap.New(*envFile)
+	app, cleanup, err := bootstrap.New(*envFile)
 	if err != nil {
 		slog.Error("application initialization failed", "error", err)
 		os.Exit(1)
 	}
+
+	defer cleanup()
 
 	defer func() {
 		if err := app.Close(); err != nil {

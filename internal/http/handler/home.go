@@ -12,17 +12,27 @@ import (
 )
 
 type HomeHandler struct {
-	identity *service.IdentityService
-	pantry   *service.PantryService
+	identity  *service.IdentityService
+	dashboard *service.DashboardService
 }
 
-func NewHomeHandler(identity *service.IdentityService, pantry *service.PantryService) *HomeHandler {
-	return &HomeHandler{identity: identity, pantry: pantry}
+func NewHomeHandler(identity *service.IdentityService, dashboard *service.DashboardService) *HomeHandler {
+	return &HomeHandler{identity: identity, dashboard: dashboard}
 }
 
 func (h *HomeHandler) Dashboard(c *gin.Context) {
 	actor, _ := middleware.CurrentIdentity(c)
-	data, err := h.pantry.Dashboard(c.Request.Context(), actor)
+	data, err := h.dashboard.Dashboard(c.Request.Context(), actor)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	response.WriteData(c, http.StatusOK, data)
+}
+
+func (h *HomeHandler) Notifications(c *gin.Context) {
+	actor, _ := middleware.CurrentIdentity(c)
+	data, err := h.dashboard.Notifications(c.Request.Context(), actor)
 	if err != nil {
 		writeServiceError(c, err)
 		return
@@ -102,6 +112,8 @@ type updateProfileRequest struct {
 	DisplayName    string               `json:"display_name" binding:"required,max=64"`
 	AvatarKey      model.MemberAvatar   `json:"avatar_key" binding:"required,max=32"`
 	PresenceStatus model.PresenceStatus `json:"presence_status"`
+	Email          string               `json:"email" binding:"omitempty,max=254"`
+	Phone          string               `json:"phone" binding:"omitempty,max=32"`
 	Version        uint64               `json:"version" binding:"required"`
 }
 
@@ -116,6 +128,8 @@ func (h *HomeHandler) UpdateProfile(c *gin.Context) {
 		DisplayName:    request.DisplayName,
 		AvatarKey:      request.AvatarKey,
 		PresenceStatus: request.PresenceStatus,
+		Email:          request.Email,
+		Phone:          request.Phone,
 		Version:        request.Version,
 	})
 	if err != nil {

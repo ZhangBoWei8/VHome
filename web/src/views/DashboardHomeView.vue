@@ -117,6 +117,14 @@ function relativeTime(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(value));
 }
 
+function formatMoney(cents: number) {
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency: "CNY",
+    minimumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
 async function loadDashboard() {
   error.value = "";
   try {
@@ -192,9 +200,16 @@ onBeforeUnmount(() => {
         <div class="metric-icon"><ThermometerSun /></div>
         <div><p>室内环境</p><strong>开发中</strong><span>等待智能设备接入</span></div>
       </article>
-      <article class="metric-card sky development-card">
+      <article class="metric-card sky clickable-card" role="button" tabindex="0" @click="router.push('/app/expenses')" @keydown.enter="router.push('/app/expenses')">
         <div class="metric-icon"><CircleDollarSign /></div>
-        <div><p>本月家庭开销</p><strong>开发中</strong><span>等待家庭账本功能</span></div>
+        <div>
+          <p>本月家庭开销</p>
+          <strong>{{ formatMoney(dashboard?.monthly_expense.total_amount_cents ?? 0) }}</strong>
+          <span v-if="dashboard?.monthly_expense.change_percent !== null && dashboard?.monthly_expense.change_percent !== undefined">
+            较上月{{ dashboard.monthly_expense.change_percent >= 0 ? "增加" : "减少" }} {{ Math.abs(dashboard.monthly_expense.change_percent) }}%
+          </span>
+          <span v-else>本月家庭总支出</span>
+        </div>
       </article>
     </section>
 

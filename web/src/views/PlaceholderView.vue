@@ -9,7 +9,6 @@ const router = useRouter();
 const content = computed(() => {
   const section = String(route.params.section);
   const pages: Record<string, { emoji: string; title: string; description: string }> = {
-    meals: { emoji: "🍲", title: "饮食日历", description: "家庭成员的每日饮食与营养记录将在第二阶段开放。" },
     memos: { emoji: "📝", title: "家庭备忘", description: "私人备忘、公共提醒和消息通知将在第二阶段开放。" },
     knowledge: { emoji: "📚", title: "家庭知识库", description: "这里将收藏家庭文档、说明书与生活经验，第四阶段开放。" },
     cameras: { emoji: "📹", title: "家庭监控", description: "RTSP 视频将在媒体网关接入后显示在这里，第五阶段开放。" },

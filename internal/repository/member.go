@@ -23,6 +23,8 @@ const memberColumns = `
 	last_login_at,
 	presence_status,
 	avatar_key,
+	email,
+	phone_e164,
 	version,
 	created_at,
 	updated_at
@@ -60,6 +62,8 @@ type UpdateMemberProfileParams struct {
 	DisplayName    string
 	AvatarKey      model.MemberAvatar
 	PresenceStatus model.PresenceStatus
+	Email          *string
+	PhoneE164      *string
 	Version        uint64
 }
 
@@ -73,6 +77,12 @@ type memberScanner interface {
 	Scan(dest ...any) error
 }
 
+type MemberOption struct {
+	ID          uint64
+	DisplayName string
+	AvatarKey   model.MemberAvatar
+}
+
 func scanMember(scanner memberScanner) (model.Member, error) {
 	var member model.Member
 
@@ -80,6 +90,8 @@ func scanMember(scanner memberScanner) (model.Member, error) {
 	var reviewedAt sql.NullTime
 	var lastLoginAt sql.NullTime
 	var presenceStatus sql.NullString
+	var email sql.NullString
+	var phoneE164 sql.NullString
 
 	err := scanner.Scan(
 		&member.ID,
@@ -95,6 +107,8 @@ func scanMember(scanner memberScanner) (model.Member, error) {
 		&lastLoginAt,
 		&presenceStatus,
 		&member.AvatarKey,
+		&email,
+		&phoneE164,
 		&member.Version,
 		&member.CreatedAt,
 		&member.UpdatedAt,
@@ -119,6 +133,14 @@ func scanMember(scanner memberScanner) (model.Member, error) {
 	}
 	if presenceStatus.Valid {
 		member.PresenceStatus = model.PresenceStatus(presenceStatus.String)
+	}
+	if email.Valid {
+		value := email.String
+		member.Email = &value
+	}
+	if phoneE164.Valid {
+		value := phoneE164.String
+		member.PhoneE164 = &value
 	}
 
 	return member, nil
@@ -454,6 +476,8 @@ func (r *Repository) UpdateMemberProfile(ctx context.Context, params UpdateMembe
 			display_name = ?,
 			avatar_key = ?,
 			presence_status = ?,
+			email = ?,
+			phone_e164 = ?,
 			version = version + 1
 		WHERE id = ?
 		  AND household_id = ?
@@ -466,6 +490,8 @@ func (r *Repository) UpdateMemberProfile(ctx context.Context, params UpdateMembe
 		params.DisplayName,
 		string(params.AvatarKey),
 		presenceValue,
+		nullableMemberContact(params.Email),
+		nullableMemberContact(params.PhoneE164),
 		params.MemberID,
 		params.HouseholdID,
 		params.Version,
@@ -490,6 +516,13 @@ func (r *Repository) UpdateMemberProfile(ctx context.Context, params UpdateMembe
 	}
 
 	return r.GetMemberByID(ctx, params.MemberID)
+}
+
+func nullableMemberContact(value *string) any {
+	if value == nil || *value == "" {
+		return nil
+	}
+	return *value
 }
 
 func (r *Repository) DisableMember(ctx context.Context, params DisableMemberParams) (model.Member, error) {
@@ -565,4 +598,35 @@ func (r *Repository) UpdateMemberLastLogin(ctx context.Context, memberID uint64)
 	}
 
 	return nil
+}
+
+func (r *Repository) ListActiveMemberOptions(ctx context.Context, householdID uint64) ([]MemberOption, error) {
+	query := `SELECT id,display_name,avatar_key
+	FROM members
+	WHERE household_id = ? AND status = 'ACTIVE'
+	ORDER BY created_at ASC, id ASC
+	`
+	rows, err := r.q.QueryContext(ctx, query, householdID)
+	if err != nil {
+		return nil, fmt.Errorf("list active member options: %w", err)
+	}
+	defer rows.Close()
+	members := make([]MemberOption, 0)
+	for rows.Next() {
+		var member MemberOption
+
+		if err := rows.Scan(&member.ID, &member.DisplayName, &member.AvatarKey); err != nil {
+			return nil, fmt.Errorf("scan active member option: %w", err)
+		}
+		members = append(members, member)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf(
+			"iterate active member options: %w",
+			err,
+		)
+	}
+
+	return members, nil
 }

@@ -31,10 +31,7 @@ type LoginResult struct {
 	SessionExpiresAt time.Time
 }
 
-func (s *IdentityService) Login(
-	ctx context.Context,
-	input LoginInput,
-) (LoginResult, error) {
+func (s *IdentityService) Login(ctx context.Context, input LoginInput) (LoginResult, error) {
 	input = normalizeLoginInput(input)
 
 	if err := validateLoginInput(input); err != nil {
@@ -71,10 +68,7 @@ func (s *IdentityService) Login(
 		)
 	}
 
-	passwordValid, err := s.passwordHasher.Verify(
-		input.Password,
-		member.PasswordHash,
-	)
+	passwordValid, err := s.passwordHasher.Verify(input.Password, member.PasswordHash)
 	if err != nil {
 		return LoginResult{}, fmt.Errorf(
 			"verify member password: %w",
@@ -130,8 +124,6 @@ func (s *IdentityService) Login(
 				return ErrInvalidCredentials
 			}
 
-			// 密码可能在首次验证后被其他请求修改。
-			// 如果哈希已经变化，不再基于旧密码创建 Session。
 			if currentMember.PasswordHash != member.PasswordHash {
 				return ErrInvalidCredentials
 			}
@@ -199,15 +191,14 @@ func (s *IdentityService) Login(
 	}, nil
 }
 
-func (s *IdentityService) consumeDummyPasswordCheck(
-	password string,
-) {
+func (s *IdentityService) consumeDummyPasswordCheck(password string) {
 	_, _ = s.passwordHasher.Verify(
 		password,
 		s.dummyPasswordHash,
 	)
 }
 
+// 规范化登录输入
 func normalizeLoginInput(input LoginInput) LoginInput {
 	input.Name = strings.TrimSpace(input.Name)
 	input.UserAgent = strings.TrimSpace(input.UserAgent)
@@ -215,6 +206,7 @@ func normalizeLoginInput(input LoginInput) LoginInput {
 	return input
 }
 
+// 验证登录输入
 func validateLoginInput(input LoginInput) error {
 	if err := validateTextLength(
 		"name",
@@ -248,9 +240,7 @@ func validateLoginInput(input LoginInput) error {
 	return nil
 }
 
-func validateMemberLoginStatus(
-	status model.MemberStatus,
-) error {
+func validateMemberLoginStatus(status model.MemberStatus) error {
 	switch status {
 	case model.MemberStatusActive:
 		return nil

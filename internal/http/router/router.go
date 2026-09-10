@@ -3,53 +3,27 @@ package router
 import (
 	"github.com/gin-gonic/gin"
 
-	"vhome/internal/config"
 	"vhome/internal/http/handler"
 	"vhome/internal/http/middleware"
-	"vhome/internal/service"
 )
 
-func Register(
-	engine *gin.Engine,
-	identityService *service.IdentityService,
-	pantryService *service.PantryService,
-	authConfig config.AuthConfig,
-) {
-	bootstrapHandler :=
-		handler.NewBootstrapHandler(
-			identityService,
-			authConfig.CookieName,
-		)
-
-	identityHandler :=
-		handler.NewIdentityHandler(
-			identityService,
-			authConfig.CookieName,
-			authConfig.CookieSecure,
-		)
-
-	requireSession :=
-		middleware.RequireSession(
-			identityService,
-			authConfig.CookieName,
-		)
-	requireCSRF := middleware.RequireCSRF(identityService)
-	memberHandler := handler.NewMemberHandler(identityService)
-	pantryHandler := handler.NewPantryHandler(pantryService, "data/uploads")
-	homeHandler := handler.NewHomeHandler(identityService, pantryService)
-
+// Register only mounts routes. Constructing handlers and guards is the
+// injector's job, so adding a service never touches this signature.
+func Register(engine *gin.Engine, h handler.Handlers, g middleware.Guards) {
 	api := engine.Group("/api/v1")
 
-	registerBootstrapRoutes(
-		api,
-		bootstrapHandler,
-	)
+	registerHealthRoutes(api, h.Health)
 
-	registerIdentityRoutes(
-		api,
-		identityHandler,
-		requireSession,
-	)
+	registerBootstrapRoutes(api, h.Bootstrap)
 
-	registerMemberAndPantryRoutes(api, memberHandler, pantryHandler, homeHandler, requireSession, requireCSRF)
+	registerIdentityRoutes(api, h.Identity, g.Session)
+
+	registerMemberAndPantryRoutes(api, h.Member, h.Pantry, h.Home, g.Session, g.CSRF)
+
+	registerMealRoutes(api, h.Meal, g.Session, g.CSRF)
+
+	registerExpenseRoutes(api, h.Expense, g.Session, g.CSRF)
+	registerMemoRoutes(api, h.Memo, g.Session, g.CSRF)
+	registerNotificationSettingsRoutes(api, h.Notification, g.Session, g.CSRF)
+	registerAgentRoutes(api, h.Agent, g.Session, g.CSRF)
 }

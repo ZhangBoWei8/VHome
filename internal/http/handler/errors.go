@@ -10,10 +10,7 @@ import (
 	"vhome/internal/service"
 )
 
-func writeBadRequest(
-	c *gin.Context,
-	err error,
-) {
+func writeBadRequest(c *gin.Context, err error) {
 	_ = c.Error(err)
 
 	response.WriteError(
@@ -24,11 +21,32 @@ func writeBadRequest(
 	)
 }
 
-func writeServiceError(
-	c *gin.Context,
-	err error,
-) {
+func writeServiceError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, service.ErrMemoTimeInvalid):
+		response.WriteError(c, http.StatusUnprocessableEntity, "MEMO_TIME_INVALID", "提醒时间必须晚于当前时间，并以30分钟为单位")
+
+	case errors.Is(err, service.ErrMemoRecipientInvalid):
+		response.WriteError(c, http.StatusUnprocessableEntity, "MEMO_RECIPIENT_INVALID", "提醒成员不存在、未启用或不属于当前家庭")
+
+	case errors.Is(err, service.ErrMemoSlotFull):
+		response.WriteError(c, http.StatusConflict, "MEMO_SLOT_FULL", "该小时的备忘事项已达到上限")
+
+	case errors.Is(err, service.ErrMemoAlreadyDismissed):
+		response.WriteError(c, http.StatusConflict, "MEMO_ALREADY_DISMISSED", "你已经屏蔽了这条提醒")
+
+	case errors.Is(err, service.ErrSecretEncryptionUnavailable):
+		response.WriteError(c, http.StatusServiceUnavailable, "SECRET_ENCRYPTION_UNAVAILABLE", "服务器尚未配置通知密钥")
+
+	case errors.Is(err, service.ErrNotificationConfiguration):
+		response.WriteError(c, http.StatusUnprocessableEntity, "NOTIFICATION_CONFIGURATION_INCOMPLETE", "通知配置不完整")
+
+	case errors.Is(err, service.ErrSMSProviderUnavailable):
+		response.WriteError(c, http.StatusConflict, "SMS_PROVIDER_UNAVAILABLE", "腾讯云短信接口当前仅预留配置，暂未启用")
+
+	case errors.Is(err, service.ErrCalendarNoticeUnavailable):
+		response.WriteError(c, http.StatusServiceUnavailable, "CALENDAR_NOTICE_UNAVAILABLE", "尚未找到国务院发布的对应年度节假日通知")
+
 	case errors.Is(err, service.ErrInvalidInput):
 		response.WriteError(
 			c,
@@ -139,6 +157,15 @@ func writeServiceError(
 
 	case errors.Is(err, service.ErrMaterialNameExists):
 		response.WriteError(c, http.StatusConflict, "MATERIAL_NAME_EXISTS", "已有同名物料，请直接使用已有品类或更换名称")
+
+	case errors.Is(err, service.ErrFoodNameExists):
+		response.WriteError(c, http.StatusConflict, "FOOD_NAME_EXISTS", "已有同名食品，请直接使用已有食品或更换名称")
+
+	case errors.Is(err, service.ErrFoodRestoreRequired):
+		response.WriteError(c, http.StatusConflict, "FOOD_RESTORE_REQUIRED", "回收站中已有同名食品，请先恢复该食品")
+
+	case errors.Is(err, service.ErrNutritionConfirmationRequired):
+		response.WriteError(c, http.StatusConflict, "NUTRITION_CONFIRMATION_REQUIRED", "热量与三大营养素估算值差异较大，请确认后再保存")
 
 	case errors.Is(err, service.ErrConflict):
 		response.WriteError(c, http.StatusConflict, "VERSION_CONFLICT", "数据已经发生变化，请刷新后重试")

@@ -6,11 +6,27 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"vhome/internal/config"
 	"vhome/internal/http/response"
 	"vhome/internal/service"
 )
 
 const identityContextKey = "vhome.authenticated_identity"
+
+// Guards bundles the route guards. RequireSession and RequireCSRF both return
+// gin.HandlerFunc, so a dependency injector cannot tell them apart by type;
+// wrapping them in one named struct keeps the object graph unambiguous.
+type Guards struct {
+	Session gin.HandlerFunc
+	CSRF    gin.HandlerFunc
+}
+
+func NewGuards(identityService *service.IdentityService, authConfig config.AuthConfig) Guards {
+	return Guards{
+		Session: RequireSession(identityService, authConfig.CookieName),
+		CSRF:    RequireCSRF(identityService),
+	}
+}
 
 func RequireSession(identityService *service.IdentityService, sessionCookie string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -70,8 +86,7 @@ func CurrentIdentity(c *gin.Context) (service.AuthenticatedIdentity, bool) {
 		return service.AuthenticatedIdentity{}, false
 	}
 
-	identity, ok :=
-		value.(service.AuthenticatedIdentity)
+	identity, ok := value.(service.AuthenticatedIdentity)
 
 	return identity, ok
 }

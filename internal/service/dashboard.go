@@ -14,7 +14,51 @@ import (
 	"time"
 
 	"vhome/internal/model"
+	"vhome/internal/repository"
 )
+
+// DashboardService is an application-level read service. It composes pantry,
+// expense, member and weather data without making any one domain service own
+// the dashboard itself.
+type DashboardService struct {
+	repository *repository.Repository
+	pantry     *PantryService
+	expense    *ExpenseService
+	memo       *MemoService
+	weather    *weatherClient
+}
+
+func NewDashboardService(repo *repository.Repository, pantry *PantryService, expense *ExpenseService, memo *MemoService) *DashboardService {
+	return &DashboardService{
+		repository: repo,
+		pantry:     pantry,
+		expense:    expense,
+		memo:       memo,
+		weather:    newWeatherClient(),
+	}
+}
+
+type DashboardNotificationSummary struct {
+	PendingMembers    uint64             `json:"pending_members"`
+	MaterialReminders []MaterialReminder `json:"material_reminders"`
+	MemoReminders     []MemoView         `json:"memo_reminders"`
+}
+
+func (s *DashboardService) Notifications(ctx context.Context, actor AuthenticatedIdentity) (DashboardNotificationSummary, error) {
+	pantryNotifications, err := s.pantry.Notifications(ctx, actor)
+	if err != nil {
+		return DashboardNotificationSummary{}, err
+	}
+	memos, err := s.memo.DueMemos(ctx, actor, time.Now())
+	if err != nil {
+		return DashboardNotificationSummary{}, err
+	}
+	return DashboardNotificationSummary{
+		PendingMembers:    pantryNotifications.PendingMembers,
+		MaterialReminders: pantryNotifications.MaterialReminders,
+		MemoReminders:     memos,
+	}, nil
+}
 
 type DashboardStorage struct {
 	StorageType   model.StorageType `json:"storage_type"`
@@ -49,28 +93,26 @@ type WeatherSummary struct {
 }
 
 type DashboardSummary struct {
-	HouseholdName  string              `json:"household_name"`
-	Province       string              `json:"province"`
-	City           string              `json:"city"`
-	InventoryCount int                 `json:"inventory_count"`
-	AttentionCount int                 `json:"attention_count"`
-	DueTodayCount  int                 `json:"due_today_count"`
-	PantryWatch    []InventoryView     `json:"pantry_watch"`
-	Storage        []DashboardStorage  `json:"storage"`
-	Activities     []DashboardActivity `json:"activities"`
-	Members        []DashboardMember   `json:"members"`
-	Weather        WeatherSummary      `json:"weather"`
+	HouseholdName  string                  `json:"household_name"`
+	Province       string                  `json:"province"`
+	City           string                  `json:"city"`
+	InventoryCount int                     `json:"inventory_count"`
+	AttentionCount int                     `json:"attention_count"`
+	DueTodayCount  int                     `json:"due_today_count"`
+	PantryWatch    []InventoryView         `json:"pantry_watch"`
+	Storage        []DashboardStorage      `json:"storage"`
+	Activities     []DashboardActivity     `json:"activities"`
+	Members        []DashboardMember       `json:"members"`
+	Weather        WeatherSummary          `json:"weather"`
+	MonthlyExpense HouseholdExpenseSummary `json:"monthly_expense"`
 }
 
-func (s *PantryService) Dashboard(
-	ctx context.Context,
-	actor AuthenticatedIdentity,
-) (DashboardSummary, error) {
+func (s *DashboardService) Dashboard(ctx context.Context, actor AuthenticatedIdentity) (DashboardSummary, error) {
 	household, err := s.repository.GetHouseholdByID(ctx, actor.HouseholdID)
 	if err != nil {
 		return DashboardSummary{}, err
 	}
-	items, err := s.ListInventory(ctx, "active", "asc")
+	items, err := s.pantry.ListInventory(ctx, "active", "asc")
 	if err != nil {
 		return DashboardSummary{}, err
 	}
@@ -86,6 +128,10 @@ func (s *PantryService) Dashboard(
 	if err != nil {
 		return DashboardSummary{}, err
 	}
+	monthlyExpense, err := s.expense.CurrentHouseholdSummary(ctx, actor)
+	if err != nil {
+		return DashboardSummary{}, err
+	}
 
 	out := DashboardSummary{
 		HouseholdName:  household.DisplayName,
@@ -96,6 +142,7 @@ func (s *PantryService) Dashboard(
 		Storage:        make([]DashboardStorage, 0, 2),
 		Activities:     make([]DashboardActivity, 0, len(activityRows)),
 		Members:        make([]DashboardMember, 0, len(members)),
+		MonthlyExpense: monthlyExpense,
 	}
 
 	for _, item := range items {

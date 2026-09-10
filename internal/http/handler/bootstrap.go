@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"vhome/internal/config"
 	"vhome/internal/http/response"
 	"vhome/internal/service"
 )
@@ -28,23 +29,17 @@ type BootstrapData struct {
 	APIVersion    string `json:"api_version"`
 }
 
-func NewBootstrapHandler(
-	identityService *service.IdentityService,
-	sessionCookie string,
-) *BootstrapHandler {
+func NewBootstrapHandler(identityService *service.IdentityService, authConfig config.AuthConfig) *BootstrapHandler {
 	return &BootstrapHandler{
 		identityService: identityService,
-		sessionCookie:   sessionCookie,
+		sessionCookie:   authConfig.CookieName,
 	}
 }
 
-func (h *BootstrapHandler) Get(
-	c *gin.Context,
-) {
+func (h *BootstrapHandler) Get(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	state, err :=
-		h.identityService.GetBootstrapState(ctx)
+	state, err := h.identityService.GetBootstrapState(ctx)
 	if err != nil {
 		_ = c.Error(err)
 

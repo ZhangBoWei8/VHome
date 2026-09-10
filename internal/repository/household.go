@@ -105,9 +105,7 @@ func (r *Repository) GetHousehold(ctx context.Context) (model.Household, error) 
 		LIMIT 1
 	`
 
-	household, err := scanHousehold(
-		r.q.QueryRowContext(ctx, query),
-	)
+	household, err := scanHousehold(r.q.QueryRowContext(ctx, query))
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Household{}, ErrNotFound
 	}

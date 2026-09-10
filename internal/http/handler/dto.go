@@ -53,6 +53,8 @@ type MemberData struct {
 	Status         model.MemberStatus   `json:"status"`
 	PresenceStatus model.PresenceStatus `json:"presence_status"`
 	AvatarKey      model.MemberAvatar   `json:"avatar_key"`
+	Email          *string              `json:"email"`
+	PhoneE164      *string              `json:"phone_e164"`
 	Version        uint64               `json:"version"`
 }
 
@@ -69,9 +71,7 @@ type RegistrationData struct {
 	Member MemberData `json:"member"`
 }
 
-func newHouseholdData(
-	household model.Household,
-) HouseholdData {
+func newHouseholdData(household model.Household) HouseholdData {
 	return HouseholdData{
 		ID:   household.ID,
 		Name: household.DisplayName,
@@ -87,9 +87,7 @@ func newHouseholdData(
 	}
 }
 
-func newMemberData(
-	member model.Member,
-) MemberData {
+func newMemberData(member model.Member) MemberData {
 	return MemberData{
 		ID:             member.ID,
 		Username:       member.Username,
@@ -98,13 +96,13 @@ func newMemberData(
 		Status:         member.Status,
 		PresenceStatus: member.PresenceStatus,
 		AvatarKey:      member.AvatarKey,
+		Email:          member.Email,
+		PhoneE164:      member.PhoneE164,
 		Version:        member.Version,
 	}
 }
 
-func newSetupSessionData(
-	result service.SetupResult,
-) SessionData {
+func newSetupSessionData(result service.SetupResult) SessionData {
 	return SessionData{
 		CSRFToken: result.CSRFToken,
 		ExpiresAt: result.SessionExpiresAt,
@@ -117,9 +115,7 @@ func newSetupSessionData(
 	}
 }
 
-func newLoginSessionData(
-	result service.LoginResult,
-) SessionData {
+func newLoginSessionData(result service.LoginResult) SessionData {
 	return SessionData{
 		CSRFToken: result.CSRFToken,
 		ExpiresAt: result.SessionExpiresAt,
@@ -132,9 +128,7 @@ func newLoginSessionData(
 	}
 }
 
-func newCurrentSessionData(
-	identity service.AuthenticatedIdentity,
-) SessionData {
+func newCurrentSessionData(identity service.AuthenticatedIdentity) SessionData {
 	return SessionData{
 		ExpiresAt: identity.SessionExpiresAt,
 
@@ -160,6 +154,8 @@ func newCurrentSessionData(
 			Status:         model.MemberStatusActive,
 			PresenceStatus: identity.PresenceStatus,
 			AvatarKey:      identity.AvatarKey,
+			Email:          identity.Email,
+			PhoneE164:      identity.PhoneE164,
 			Version:        identity.MemberVersion,
 		},
 	}
