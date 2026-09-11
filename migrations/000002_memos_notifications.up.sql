@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS calendar_day_overrides (
         CHECK (day_type IN ('HOLIDAY', 'TRANSFER_WORKDAY'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO calendar_day_overrides (calendar_date, day_type, holiday_name, source_url)
+INSERT IGNORE INTO calendar_day_overrides (calendar_date, day_type, holiday_name, source_url)
 VALUES
     ('2026-01-01', 'HOLIDAY', '元旦', 'https://www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm'),
     ('2026-01-02', 'HOLIDAY', '元旦', 'https://www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm'),

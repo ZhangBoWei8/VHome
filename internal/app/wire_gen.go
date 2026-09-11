@@ -96,16 +96,27 @@ func InitializeAPP(ctx context.Context, envFile config.EnvFile) (*APP, func(), e
 		cleanup()
 		return nil, nil, err
 	}
+	agentMemoryService, err := service.NewAgentMemoryService(repositoryRepository)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
 	options := tools.Options{
 		Pantry:   pantryService,
 		Meal:     mealService,
 		Expense:  expenseService,
 		Memo:     memoService,
 		Identity: identityService,
+		Memory:   agentMemoryService,
 	}
 	registry := tools.NewRegistry(options)
-	factory := agent.ProvideFactory(client, registry)
-	agentHandler := handler.NewAgentHandler(factory)
+	agentConversationService, err := service.NewAgentConversationService(repositoryRepository)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	agentAgent := agent.New(client, registry, agentConversationService)
+	agentHandler := handler.NewAgentHandler(agentAgent, agentConversationService)
 	handlers := handler.Handlers{
 		Health:       healthHandler,
 		Bootstrap:    bootstrapHandler,
@@ -126,9 +137,10 @@ func InitializeAPP(ctx context.Context, envFile config.EnvFile) (*APP, func(), e
 		return nil, nil, err
 	}
 	workers := Workers{
-		Memo:         memoService,
-		Notification: notificationService,
-		Calendar:     calendarSyncService,
+		Memo:          memoService,
+		Notification:  notificationService,
+		Calendar:      calendarSyncService,
+		Conversations: agentConversationService,
 	}
 	app := newAPP(configConfig, engine, db, workers)
 	return app, func() {

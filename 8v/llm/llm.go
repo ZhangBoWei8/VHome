@@ -54,7 +54,18 @@ func NewClient(cfg agconfig.AGConfig) (Client, error) {
 	return &OpenAICompatiableClient{
 		provider: provider,
 		cfg:      p,
-		http:     &http.Client{Timeout: 180 * time.Second},
+		// No whole-request Timeout: it would sever a long stream mid-answer,
+		// since a streamed body legitimately stays open while the model
+		// generates. The deadline that matters is time-to-first-byte, which
+		// ResponseHeaderTimeout covers; overall cancellation comes from the
+		// request context.
+		http: &http.Client{
+			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
+				ResponseHeaderTimeout: 60 * time.Second,
+				IdleConnTimeout:       90 * time.Second,
+			},
+		},
 	}, nil
 }
 

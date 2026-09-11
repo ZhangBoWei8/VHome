@@ -366,15 +366,188 @@ export const updateNotificationSettings = (input: NotificationSettingsInput) =>
 export const testNotificationEmail = (recipient: string) =>
   request<void>("/household/settings/notifications/email/test", { method: "POST", body: JSON.stringify({ recipient }) });
 
-export interface AgentChatData {
-  answer: string;
+export interface AgentConversation {
+  id: number;
+  title: string;
+  last_message_at: string;
+  message_count: number;
+  /** message_count 换算成问答轮数，上限和提醒都以此为单位。 */
+  rounds: number;
 }
 
-export const chatWithAgent = (input: string) =>
-  request<AgentChatData>("/agent/chat", {
+/** 服务端下发的限制，避免前端硬编码会漂移的数字。 */
+export interface AgentLimits {
+  max_rounds: number;
+  warn_at_rounds: number;
+  retention_days: number;
+}
+
+export interface AgentConversationList {
+  conversations: AgentConversation[];
+  limits: AgentLimits;
+}
+
+export interface AgentMessage {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+export const listAgentConversations = () =>
+  request<AgentConversationList>("/agent/conversations");
+
+export const getAgentMessages = (conversationID: number) =>
+  request<AgentMessage[]>(`/agent/conversations/${conversationID}/messages`);
+
+export const deleteAgentConversation = (conversationID: number) =>
+  request<void>(`/agent/conversations/${conversationID}`, { method: "DELETE" });
+
+/** Callbacks for one streamed agent turn. */
+export interface AgentStreamHandlers {
+  /** Fires once the thread id is known — for a new thread, before any output. */
+  onConversation?: (conversationID: number) => void;
+  /** Fires before each tool runs, so the UI can show what the agent is doing. */
+  onTool?: (name: string) => void;
+  /** Fires for each fragment of the answer. */
+  onToken?: (text: string) => void;
+}
+
+/**
+ * Streams one agent turn.
+ *
+ * This deliberately bypasses `request`: the envelope helper parses one JSON
+ * body, and EventSource cannot send a POST body or the CSRF header, so the
+ * stream is read from `fetch` and the SSE frames are parsed by hand.
+ */
+export async function streamAgentChat(
+  input: string,
+  conversationID: number | null,
+  handlers: AgentStreamHandlers = {},
+): Promise<AgentChatResult> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const csrfToken = readCookie(csrfCookieName);
+  if (csrfToken) {
+    headers.set("X-CSRF-Token", csrfToken);
+  }
+
+  const response = await fetch(`${apiBaseURL}/agent/chat`, {
     method: "POST",
-    body: JSON.stringify({ input }),
+    headers,
+    credentials: "include",
+    body: JSON.stringify({
+      input,
+      ...(conversationID ? { conversation_id: conversationID } : {}),
+    }),
   });
+
+  // A failure before the first flush still arrives as the normal envelope.
+  if (!response.ok || !response.body) {
+    let code = "AGENT_UNAVAILABLE";
+    let message = "家庭 Agent 暂时无法回答，请稍后再试。";
+    try {
+      const payload = (await response.json()) as APIEnvelope<never>;
+      code = payload.error?.code ?? code;
+      message = payload.error?.message ?? message;
+    } catch {
+      // Not JSON — keep the defaults.
+    }
+
+    throw new APIError(response.status, code, message);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  let buffer = "";
+  let answer = "";
+  let resolvedID = conversationID ?? 0;
+  let streamError: APIError | null = null;
+
+  const handleFrame = (frame: string) => {
+    let event = "message";
+    const dataLines: string[] = [];
+
+    for (const line of frame.split("\n")) {
+      if (line.startsWith("event:")) {
+        event = line.slice(6).trim();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trim());
+      }
+    }
+
+    if (dataLines.length === 0) return;
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(dataLines.join("\n")) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+
+    switch (event) {
+      case "meta":
+        resolvedID = Number(payload.conversation_id) || resolvedID;
+        handlers.onConversation?.(resolvedID);
+        break;
+
+      case "tool":
+        handlers.onTool?.(String(payload.name ?? ""));
+        break;
+
+      case "token": {
+        const text = String(payload.text ?? "");
+        answer += text;
+        handlers.onToken?.(text);
+        break;
+      }
+
+      case "done":
+        resolvedID = Number(payload.conversation_id) || resolvedID;
+        // The final answer is authoritative: it also covers providers that
+        // never streamed a token.
+        answer = String(payload.answer ?? answer);
+        break;
+
+      case "error":
+        streamError = new APIError(
+          502,
+          String(payload.code ?? "AGENT_UNAVAILABLE"),
+          String(payload.message ?? "家庭 Agent 暂时无法回答，请稍后再试。"),
+        );
+        break;
+    }
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    // Frames are separated by a blank line; the trailing partial stays in the
+    // buffer until the rest of it arrives.
+    let separator = buffer.indexOf("\n\n");
+    while (separator !== -1) {
+      handleFrame(buffer.slice(0, separator));
+      buffer = buffer.slice(separator + 2);
+      separator = buffer.indexOf("\n\n");
+    }
+  }
+
+  if (buffer.trim()) {
+    handleFrame(buffer);
+  }
+
+  if (streamError) throw streamError;
+
+  return { conversationID: resolvedID, answer };
+}
+
+export interface AgentChatResult {
+  conversationID: number;
+  answer: string;
+}
 
 export interface MemoMemberOption {
   id: number;

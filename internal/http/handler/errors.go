@@ -167,6 +167,15 @@ func writeServiceError(c *gin.Context, err error) {
 	case errors.Is(err, service.ErrNutritionConfirmationRequired):
 		response.WriteError(c, http.StatusConflict, "NUTRITION_CONFIRMATION_REQUIRED", "热量与三大营养素估算值差异较大，请确认后再保存")
 
+	case errors.Is(err, service.ErrAgentMemoryFull):
+		response.WriteError(c, http.StatusConflict, "AGENT_MEMORY_FULL", "记忆库已满，请先删除一些不再需要的记忆")
+
+	case errors.Is(err, service.ErrAgentMemoryScopeInvalid):
+		response.WriteError(c, http.StatusUnprocessableEntity, "AGENT_MEMORY_SCOPE_INVALID", "记忆的作用域不合法")
+
+	case errors.Is(err, service.ErrAgentConversationFull):
+		response.WriteError(c, http.StatusConflict, "AGENT_CONVERSATION_FULL", "对话数量已达上限，请先删除一些旧对话")
+
 	case errors.Is(err, service.ErrConflict):
 		response.WriteError(c, http.StatusConflict, "VERSION_CONFLICT", "数据已经发生变化，请刷新后重试")
 

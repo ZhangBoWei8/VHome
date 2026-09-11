@@ -69,12 +69,22 @@ docker compose run --rm migrate version    # must print 2
 
 On a brand new database skip this: `migrate` applies both from scratch.
 
-### 4. Log the Docker daemon into the registry
+### 4. Make the images pullable
 
-```bash
-# GHCR: use a PAT with read:packages
-echo "$GHCR_TOKEN" | docker login ghcr.io -u ZhangBoWei8 --password-stdin
-```
+Run the Deploy workflow once so the packages exist, then decide their
+visibility at **github.com/ZhangBoWei8?tab=packages → vhome-api → Package
+settings**:
+
+- **Public** (simplest, and this repository is already public): the server pulls
+  with no credentials. Nothing else to do.
+- **Private**: the server needs a login. Create a PAT with `read:packages` and
+  run once on the server:
+
+  ```bash
+  echo "$GHCR_PAT" | docker login ghcr.io -u ZhangBoWei8 --password-stdin
+  ```
+
+Do the same for `vhome-web`.
 
 ### 5. Install the self-hosted runner
 
@@ -94,17 +104,23 @@ and to write `/opt/vhome`.
 
 ### 6. Configure the repository
 
-**Settings → Secrets and variables → Actions → Variables:**
+**With GHCR there is nothing to configure.** The workflow defaults to
+`ghcr.io/<owner lowercased>` and `/opt/vhome`, and authenticates with the
+`GITHUB_TOKEN` that Actions injects.
 
-| Variable | Value |
-|---|---|
-| `VHOME_IMAGE_REGISTRY` | `ghcr.io/zhangbowei8` |
-| `VHOME_REGISTRY_HOST` | `ghcr.io` |
-| `VHOME_DEPLOY_DIR` | `/opt/vhome` |
+Override any of these under **Settings → Secrets and variables → Actions** only
+if you need to:
 
-**Secrets** — only needed for a non-GHCR registry, which then needs
-`VHOME_REGISTRY_USERNAME` and `VHOME_REGISTRY_PASSWORD`. With GHCR the workflow
-falls back to `GITHUB_TOKEN`.
+| Kind | Name | When |
+|---|---|---|
+| Variable | `VHOME_IMAGE_REGISTRY` | Pushing somewhere other than GHCR, e.g. `registry.cn-hangzhou.aliyuncs.com/vhome` |
+| Variable | `VHOME_REGISTRY_HOST` | Only if it is not the first path segment of the above |
+| Variable | `VHOME_DEPLOY_DIR` | Deployment directory is not `/opt/vhome` |
+| Secret | `VHOME_REGISTRY_USERNAME` | Non-GHCR registry |
+| Secret | `VHOME_REGISTRY_PASSWORD` | Non-GHCR registry |
+
+`VHOME_IMAGE_REGISTRY` must **also** be set in the server's `.env`, because that
+is what `compose.yaml` uses to pull. The two have to agree.
 
 ## Deploying
 
@@ -128,6 +144,27 @@ Rollback replaces the application image only. The schema stays where it is,
 which is why migrations must follow the expand/contract rule in
 `migrations/README.md`: the previous image has to keep working against the
 current schema.
+
+## Image storage
+
+Public GHCR packages cost nothing: storage and transfer are unlimited and do
+not count against the account. Private packages do have a quota (500 MB on the
+Free plan), which is the second reason to keep these two public — the first
+being that the server then pulls without credentials.
+
+Sizes are small anyway: roughly 35 MB for `vhome-api` and 55 MB for
+`vhome-web`, and a deploy only adds the layers that changed, about 25 MB.
+
+The `cleanup` job keeps exactly two versions of each image after a successful
+deploy: the one just deployed and the one before it. That is the minimum that
+still supports `deploy-remote.sh`'s rollback, which only ever returns to
+`.last-good-tag`. Storage therefore stays near 200 MB total, so switching the
+packages to private later remains an option.
+
+The trade-off: rolling back two deploys is not possible from the registry any
+more. Raise `min-versions-to-keep` in `.github/workflows/deploy.yml` if that
+becomes a problem. The job only runs on GHCR; another registry has its own
+retention rules, so configure one there.
 
 ## Verifying a deploy
 

@@ -492,6 +492,29 @@ func newMemberToolViews(members []service.RosterMember, actorID uint64) []member
 	return out
 }
 
+// ---------------------------------------------------------------- memory
+
+type memoryToolView struct {
+	ID      uint64 `json:"id"`
+	Scope   string `json:"scope"`
+	Content string `json:"content"`
+	Version uint64 `json:"version"`
+}
+
+func newMemoryToolViews(memories []model.AgentMemory) []memoryToolView {
+	out := make([]memoryToolView, 0, len(memories))
+	for _, memory := range memories {
+		out = append(out, memoryToolView{
+			ID:      memory.ID,
+			Scope:   string(memory.Scope),
+			Content: memory.Content,
+			Version: memory.Version,
+		})
+	}
+
+	return out
+}
+
 // ---------------------------------------------------------------- snapshot
 
 // HouseholdSnapshot is the slow-changing context injected into the system
@@ -502,6 +525,7 @@ type HouseholdSnapshot struct {
 	Actor     service.AuthenticatedIdentity
 	Members   []service.RosterMember
 	Locations []model.StorageLocation
+	Memories  []model.AgentMemory
 }
 
 // PromptSection renders the snapshot as the facts block of the system prompt.
@@ -552,6 +576,34 @@ func (s HouseholdSnapshot) PromptSection() string {
 				storageTypeLabel(location.StorageType),
 			)
 		}
+	}
+
+	b.WriteString(s.memorySection())
+
+	return b.String()
+}
+
+// memorySection renders the 记忆库. These are durable facts, not live data:
+// they are stated as background the model should honour, with an explicit
+// warning not to mistake them for current inventory or schedule data.
+func (s HouseholdSnapshot) memorySection() string {
+	if len(s.Memories) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+
+	b.WriteString("\n## 你记住的事情\n")
+	b.WriteString("这些是长期有效的家庭偏好和约束，回答和建议时要遵守。" +
+		"它们不是实时数据，库存、账单、提醒的具体数字仍然必须调用工具查询。\n")
+
+	for _, memory := range s.Memories {
+		scope := "全家"
+		if memory.Scope == model.AgentMemoryScopeMember {
+			scope = "仅" + s.Actor.DisplayName
+		}
+
+		fmt.Fprintf(&b, "- [%s] %s\n", scope, memory.Content)
 	}
 
 	return b.String()

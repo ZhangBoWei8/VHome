@@ -51,6 +51,7 @@ type Options struct {
 	Expense  *service.ExpenseService
 	Memo     *service.MemoService
 	Identity *service.IdentityService
+	Memory   *service.AgentMemoryService
 }
 
 type Registry struct {
@@ -62,6 +63,7 @@ type Registry struct {
 	expense  *service.ExpenseService
 	memo     *service.MemoService
 	identity *service.IdentityService
+	memory   *service.AgentMemoryService
 }
 
 func NewRegistry(opts Options) *Registry {
@@ -79,6 +81,7 @@ func NewRegistry(opts Options) *Registry {
 		expense:  opts.Expense,
 		memo:     opts.Memo,
 		identity: opts.Identity,
+		memory:   opts.Memory,
 	}
 
 	// A tool whose service is missing is never advertised, so the model can
@@ -97,6 +100,9 @@ func NewRegistry(opts Options) *Registry {
 	}
 	if r.identity != nil {
 		r.registerHouseholdTools()
+	}
+	if r.memory != nil {
+		r.registerMemoryTools()
 	}
 
 	return r
@@ -228,6 +234,12 @@ func (r *Registry) sanitize(name string, invocation Invocation, err error) error
 
 	case errors.Is(err, service.ErrMaterialNameExists):
 		return errors.New("同名的物料品类已经存在")
+
+	case errors.Is(err, service.ErrAgentMemoryFull):
+		return errors.New("记忆库已经满了，请先让用户确认删掉一些不再需要的记忆")
+
+	case errors.Is(err, service.ErrAgentMemoryScopeInvalid):
+		return errors.New("参数 scope 必须是 HOUSEHOLD 或 MEMBER")
 	}
 
 	// Anything else is a bug or an infrastructure failure. Keep the detail in
@@ -270,6 +282,15 @@ func (r *Registry) Snapshot(ctx context.Context, actor service.AuthenticatedIden
 					snapshot.Locations = append(snapshot.Locations, location)
 				}
 			}
+		}
+	}
+
+	if r.memory != nil {
+		memories, err := r.memory.ListFor(ctx, actor)
+		if err != nil {
+			slog.Warn("agent snapshot: load memories", "error", err)
+		} else {
+			snapshot.Memories = memories
 		}
 	}
 
