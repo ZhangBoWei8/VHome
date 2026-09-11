@@ -41,10 +41,12 @@ func (a *APP) startMemoWorkers(ctx context.Context) {
 		}
 	}()
 
+	conversationService := a.workers.Conversations
+
 	go func() {
 		defer a.workerGroup.Done()
 
-		runMemoMaintenance(ctx, memoService, calendarSyncService)
+		runMemoMaintenance(ctx, memoService, calendarSyncService, conversationService)
 		ticker := time.NewTicker(memoMaintenancePeriod)
 		defer ticker.Stop()
 
@@ -53,17 +55,13 @@ func (a *APP) startMemoWorkers(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				runMemoMaintenance(ctx, memoService, calendarSyncService)
+				runMemoMaintenance(ctx, memoService, calendarSyncService, conversationService)
 			}
 		}
 	}()
 }
 
-func runMemoEmailDelivery(
-	parent context.Context,
-	memoService *service.MemoService,
-	notificationService *service.NotificationService,
-) {
+func runMemoEmailDelivery(parent context.Context, memoService *service.MemoService, notificationService *service.NotificationService) {
 	ctx, cancel := context.WithTimeout(parent, 45*time.Second)
 	defer cancel()
 
@@ -107,16 +105,21 @@ func runMemoEmailDelivery(
 	}
 }
 
-func runMemoMaintenance(
-	parent context.Context,
-	memoService *service.MemoService,
-	calendarSyncService *service.CalendarSyncService,
-) {
+func runMemoMaintenance(parent context.Context, memoService *service.MemoService, calendarSyncService *service.CalendarSyncService, conversationService *service.AgentConversationService) {
 	ctx, cancel := context.WithTimeout(parent, 90*time.Second)
 	defer cancel()
 
 	if _, err := memoService.CleanupMemos(ctx, time.Now()); err != nil && ctx.Err() == nil {
 		log.Printf("memo maintenance: cleanup expired memos: %v", err)
+	}
+
+	// 8V 的对话历史只对用户有短期价值，长期留着既占空间也是隐私负担。
+	if deleted, err := conversationService.CleanupConversations(ctx, time.Now()); err != nil {
+		if ctx.Err() == nil {
+			log.Printf("memo maintenance: cleanup idle agent conversations: %v", err)
+		}
+	} else if deleted > 0 {
+		log.Printf("memo maintenance: deleted %d idle agent conversations", deleted)
 	}
 
 	if _, err := calendarSyncService.SyncUpcoming(ctx, time.Now()); err != nil && ctx.Err() == nil {

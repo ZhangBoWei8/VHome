@@ -49,7 +49,7 @@ services:
       - vhome_internal
 
   api:
-    image: ${VHOME_IMAGE_REGISTRY:-vhome}/vhome-api:${VHOME_IMAGE_TAG:-latest}
+    image: ${VHOME_IMAGE_REGISTRY:?VHOME_IMAGE_REGISTRY is required, e.g. ghcr.io/zhangbowei8}/vhome-api:${VHOME_IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
       VHOME_ENV: ${VHOME_ENV:-development}
@@ -101,7 +101,7 @@ services:
       - vhome_internal
 
   web:
-    image: ${VHOME_IMAGE_REGISTRY:-vhome}/vhome-web:${VHOME_IMAGE_TAG:-latest}
+    image: ${VHOME_IMAGE_REGISTRY:?VHOME_IMAGE_REGISTRY is required, e.g. ghcr.io/zhangbowei8}/vhome-web:${VHOME_IMAGE_TAG:-latest}
     restart: unless-stopped
     ports:
       - "${VHOME_WEB_PORT:-5173}:5173"

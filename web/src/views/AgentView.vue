@@ -1,69 +1,306 @@
 <script setup lang="ts">
-import { Bot, Info, Send, Sparkles } from "@lucide/vue";
-import { computed, nextTick, ref } from "vue";
+import { Bot, MessageSquarePlus, Send, Sparkles, Trash2 } from "@lucide/vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 
-import { chatWithAgent } from "@/api";
+import type { PetState } from "@/components/AgentPet.vue";
+import {
+  deleteAgentConversation,
+  getAgentMessages,
+  listAgentConversations,
+  streamAgentChat,
+  type AgentConversation,
+  type AgentLimits,
+} from "@/api";
+import { usePetStore } from "@/stores/pet";
 import { useSessionStore } from "@/stores/session";
 
-type ChatRound = {
+type ChatMessage = {
   id: number;
-  question: string;
-  answer: string;
+  role: "user" | "assistant";
+  content: string;
   failed: boolean;
 };
 
-const maxVisibleRounds = 10;
 const maxInputLength = 4000;
+
+// The label shown while a tool runs. Tool names are internal, so each one the
+// user is likely to trigger gets a plain-language equivalent.
+const toolLabels: Record<string, string> = {
+  pantry_list: "正在查看库存",
+  pantry_search: "正在搜索物料",
+  pantry_template: "正在查看物料信息",
+  pantry_add: "正在入库",
+  pantry_discard: "正在处理丢弃",
+  meal_get_day: "正在查看当天饮食",
+  meal_get_month: "正在查看饮食日历",
+  meal_search_food: "正在搜索食品",
+  expense_get_my_month: "正在查看我的账单",
+  expense_get_summary: "正在汇总家庭账单",
+  expense_list_categories: "正在查看账单分类",
+  expense_query_range: "正在查询账单",
+  expense_record: "正在记账",
+  memo_create: "正在创建提醒",
+  memo_list: "正在查看提醒",
+  memory_remember: "正在记住这件事",
+  memory_forget: "正在忘记这条记忆",
+  memory_list: "正在回忆",
+  household_list_members: "正在查看家庭成员",
+};
+
+// 空闲多久之后精灵开始搭话。
+const idlePromptDelay = 30_000;
+
+const idleSuggestions = [
+  "尝试问我：冰箱里还有什么？",
+  "尝试问我：这周的支出有多少？",
+  "尝试问我：今天晚饭吃什么好？",
+  "尝试问我：有哪些东西快过期了？",
+  "想让我记住什么口味偏好，直接告诉我就行。",
+];
 
 const session = useSessionStore();
 const input = ref("");
-const rounds = ref<ChatRound[]>([]);
+const messages = ref<ChatMessage[]>([]);
+const conversations = ref<AgentConversation[]>([]);
+const limits = ref<AgentLimits>({ max_rounds: 100, warn_at_rounds: 90, retention_days: 90 });
+const activeConversationID = ref<number | null>(null);
 const sending = ref(false);
+const loadingHistory = ref(false);
+const activityLabel = ref("");
 const conversation = ref<HTMLElement | null>(null);
-let nextRoundID = 1;
+
+// 精灵挂在 DashboardLayout 上，这里只驱动它的状态。
+const pet = usePetStore();
+let idleTimer: ReturnType<typeof setTimeout> | undefined;
+let happyTimer: ReturnType<typeof setTimeout> | undefined;
+
+const activeConversation = computed(() =>
+  conversations.value.find((item) => item.id === activeConversationID.value) ?? null,
+);
+
+/** 当前对话已用轮数，把正在进行的这一轮也算进去。 */
+const currentRounds = computed(() => {
+  const stored = activeConversation.value?.rounds ?? 0;
+  const pending = Math.ceil(messages.value.length / 2);
+
+  return Math.max(stored, pending);
+});
+
+const roundsRemaining = computed(() => limits.value.max_rounds - currentRounds.value);
+const nearRoundLimit = computed(() => currentRounds.value >= limits.value.warn_at_rounds);
+
+function setPet(state: PetState, message = "") {
+  clearTimeout(happyTimer);
+  pet.setState(state, message);
+}
+
+function clearIdleTimer() {
+  clearTimeout(idleTimer);
+  idleTimer = undefined;
+}
+
+/** 空闲一段时间后让精灵主动搭话；任何交互都会重置。 */
+function scheduleIdlePrompt() {
+  clearIdleTimer();
+  if (sending.value) return;
+
+  idleTimer = setTimeout(() => {
+    if (sending.value) return;
+
+    // 轮次告警优先于闲聊建议——它更要紧。
+    if (nearRoundLimit.value) {
+      showRoundWarning();
+      return;
+    }
+
+    // 只说话，不切动作：roaming 那一行的兔子在格子里是移动的，
+    // 切过去会让它看起来乱窜，也让点击位置对不上。
+    const pick = idleSuggestions[Math.floor(Math.random() * idleSuggestions.length)];
+    pet.say(pick ?? "", 8000);
+  }, idlePromptDelay);
+}
+
+function showRoundWarning() {
+  if (roundsRemaining.value > 0) {
+    setPet(
+      "notice",
+      `这个对话快满 ${limits.value.max_rounds} 轮啦（还剩 ${roundsRemaining.value} 轮），`
+        + "要不要开个新对话？满了之后最早的记录会被清掉。",
+    );
+    return;
+  }
+
+  setPet(
+    "notice",
+    `这个对话已经满 ${limits.value.max_rounds} 轮，再聊下去最早的记录会被清掉。建议开个新对话。`,
+  );
+}
+
+// Negative ids for messages that exist only on the client until the turn is
+// stored, so they never collide with a real row id.
+let nextLocalID = -1;
 
 const normalizedInput = computed(() => input.value.trim());
 const canSend = computed(() => normalizedInput.value.length > 0 && !sending.value);
 
-async function scrollToLatest() {
-  await nextTick();
-  conversation.value?.scrollTo({
-    top: conversation.value.scrollHeight,
-    behavior: "smooth",
+/** 用户往上翻看历史时不该被硬拽回底部，留 80px 容差判断"贴着底"。 */
+function isPinnedToBottom(): boolean {
+  const element = conversation.value;
+  if (!element) return true;
+
+  return element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+}
+
+let scrollQueued = false;
+
+/**
+ * 滚到底部。
+ *
+ * 流式期间每个 token 都会调到这里，所以必须便宜：用 rAF 合并同一帧内的多次
+ * 调用，并且用 auto 而不是 smooth——几百个平滑滚动动画会互相打断，看起来就是
+ * 卡顿。只有切换会话这类一次性跳转才值得用 smooth。
+ */
+function scrollToLatest(smooth = false) {
+  if (smooth) {
+    void nextTick().then(() => {
+      conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: "smooth" });
+    });
+    return;
+  }
+
+  if (scrollQueued || !isPinnedToBottom()) return;
+
+  scrollQueued = true;
+  requestAnimationFrame(() => {
+    scrollQueued = false;
+    const element = conversation.value;
+    if (element) element.scrollTop = element.scrollHeight;
   });
+}
+
+async function refreshConversations() {
+  try {
+    const result = await listAgentConversations();
+    conversations.value = result.conversations;
+    limits.value = result.limits;
+  } catch {
+    // The thread list is a convenience; failing to load it must not block
+    // the user from asking a question.
+  }
+}
+
+async function selectConversation(conversationID: number) {
+  if (sending.value || activeConversationID.value === conversationID) return;
+
+  loadingHistory.value = true;
+  try {
+    const history = await getAgentMessages(conversationID);
+    messages.value = history.map((message) => ({
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      failed: false,
+    }));
+    activeConversationID.value = conversationID;
+    scrollToLatest(true);
+  } catch (cause) {
+    messages.value = [{
+      id: nextLocalID--,
+      role: "assistant",
+      content: cause instanceof Error ? cause.message : "无法加载这段对话。",
+      failed: true,
+    }];
+  } finally {
+    loadingHistory.value = false;
+  }
+}
+
+function startNewConversation() {
+  if (sending.value) return;
+
+  activeConversationID.value = null;
+  messages.value = [];
+  input.value = "";
+}
+
+async function removeConversation(conversationID: number) {
+  if (sending.value) return;
+
+  try {
+    await deleteAgentConversation(conversationID);
+  } catch {
+    return;
+  }
+
+  conversations.value = conversations.value.filter((item) => item.id !== conversationID);
+  if (activeConversationID.value === conversationID) {
+    startNewConversation();
+  }
 }
 
 async function sendMessage() {
   if (!canSend.value) return;
 
   const question = normalizedInput.value;
-  const round: ChatRound = {
-    id: nextRoundID++,
-    question,
-    answer: "",
+
+  messages.value.push({ id: nextLocalID--, role: "user", content: question, failed: false });
+
+  const reply: ChatMessage = {
+    id: nextLocalID--,
+    role: "assistant",
+    content: "",
     failed: false,
   };
-
-  rounds.value.push(round);
-  if (rounds.value.length > maxVisibleRounds) {
-    rounds.value.splice(0, rounds.value.length - maxVisibleRounds);
-  }
+  messages.value.push(reply);
 
   input.value = "";
   sending.value = true;
-  await scrollToLatest();
+  pet.busy = true;
+  activityLabel.value = "";
+  clearIdleTimer();
+  setPet("thinking", "正在努力思考ing…");
+  scrollToLatest(true);
 
   try {
-    const result = await chatWithAgent(question);
-    round.answer = result.answer.trim() || "我暂时没有生成有效回答，请换一种说法再试试。";
+    const result = await streamAgentChat(question, activeConversationID.value, {
+      onConversation: (id) => {
+        activeConversationID.value = id;
+      },
+      onTool: (name) => {
+        const label = toolLabels[name] ?? "正在查询家庭数据";
+        activityLabel.value = label;
+        setPet("searching", `${label}…`);
+      },
+      onToken: (text) => {
+        activityLabel.value = "";
+        if (pet.state !== "speaking") setPet("speaking");
+        reply.content += text;
+        void scrollToLatest();
+      },
+    });
+
+    reply.content = result.answer.trim() || "我暂时没有生成有效回答，请换一种说法再试试。";
+    await refreshConversations();
+
+    // 轮次告警比"答完了"更值得占用气泡。
+    if (nearRoundLimit.value) {
+      showRoundWarning();
+    } else {
+      setPet("happy");
+      happyTimer = setTimeout(() => setPet("idle"), 1800);
+    }
   } catch (cause) {
-    round.failed = true;
-    round.answer = cause instanceof Error
+    reply.failed = true;
+    reply.content = cause instanceof Error
       ? cause.message
       : "家庭 Agent 暂时无法回答，请稍后再试。";
+    setPet("sad", "我没答上来，等会儿再试试？");
   } finally {
     sending.value = false;
-    await scrollToLatest();
+    pet.busy = false;
+    activityLabel.value = "";
+    scrollToLatest();
+    scheduleIdlePrompt();
   }
 }
 
@@ -73,10 +310,77 @@ function handleComposerKeydown(event: KeyboardEvent) {
   event.preventDefault();
   void sendMessage();
 }
+
+// 用户一开始打字就把搭话收回去，别在输入时遮挡注意力。
+watch(input, (value) => {
+  if (!value) return;
+
+  if (pet.state === "notice") setPet("idle");
+  scheduleIdlePrompt();
+});
+
+// 切换会话后重新评估轮次告警。
+watch(activeConversationID, () => {
+  if (sending.value) return;
+
+  if (nearRoundLimit.value) showRoundWarning();
+  else setPet("idle");
+
+  scheduleIdlePrompt();
+});
+
+onMounted(async () => {
+  await refreshConversations();
+  scheduleIdlePrompt();
+});
+
+onUnmounted(() => {
+  clearIdleTimer();
+  clearTimeout(happyTimer);
+  // 交还给布局层，否则"正在思考"的气泡会跟着飘到别的页面。
+  pet.busy = false;
+  pet.reset();
+});
 </script>
 
 <template>
   <div class="agent-page">
+    <aside class="conversation-list pixel-panel">
+      <header>
+        <p class="panel-kicker">对话记录</p>
+        <button type="button" class="new-conversation" :disabled="sending" @click="startNewConversation">
+          <MessageSquarePlus :size="16" />
+          <span>新对话</span>
+        </button>
+      </header>
+
+      <ul v-if="conversations.length > 0">
+        <li v-for="item in conversations" :key="item.id">
+          <button
+            type="button"
+            class="conversation-item"
+            :class="{ active: item.id === activeConversationID }"
+            :disabled="sending"
+            @click="selectConversation(item.id)"
+          >
+            <span class="conversation-title">{{ item.title || "新对话" }}</span>
+            <small>{{ item.last_message_at }}</small>
+          </button>
+          <button
+            type="button"
+            class="delete-conversation"
+            :disabled="sending"
+            :aria-label="`删除对话 ${item.title || '新对话'}`"
+            @click="removeConversation(item.id)"
+          >
+            <Trash2 :size="14" />
+          </button>
+        </li>
+      </ul>
+
+      <p v-else class="conversation-empty">还没有对话记录</p>
+    </aside>
+
     <section class="agent-shell pixel-panel">
       <header class="agent-header">
         <div class="agent-identity">
@@ -84,51 +388,47 @@ function handleComposerKeydown(event: KeyboardEvent) {
           <div>
             <p class="panel-kicker"><Sparkles :size="14" /> VHOME ASSISTANT</p>
             <h1>家庭 Agent</h1>
-            <span><i /> 测试版本 · 已连接家庭工具</span>
+            <span><i /> 已连接家庭工具 · 会记住对话和你的长期偏好</span>
           </div>
-        </div>
-        <div class="memory-notice">
-          <Info :size="18" />
-          <p>
-            <strong>当前为临时对话</strong>
-            本页仅展示最近 10 轮，刷新或离开后会清空。Agent 暂时不会跨轮保留上下文，后续将加入记忆库、历史记录与更多能力。
-          </p>
         </div>
       </header>
 
       <div ref="conversation" class="conversation" aria-live="polite">
-        <div v-if="rounds.length === 0" class="empty-conversation">
+        <p v-if="loadingHistory" class="history-loading">正在加载这段对话…</p>
+
+        <div v-else-if="messages.length === 0" class="empty-conversation">
           <span class="welcome-sprout">🌱</span>
           <h2>你好，{{ session.memberName }}</h2>
-          <p>我可以帮你查找家里的物料、物料基础信息和个人账单。</p>
+          <p>我可以帮你查找家里的物料、饮食和账单，也可以记住你的长期偏好。</p>
           <div class="prompt-example">
             <Sparkles :size="17" />
             <span>尝试问问我：“当前有哪些物料即将过期？”</span>
           </div>
         </div>
 
-        <template v-for="round in rounds" :key="round.id">
-          <article class="message-row user-message">
+        <template v-for="message in messages" :key="message.id">
+          <article v-if="message.role === 'user'" class="message-row user-message">
             <span class="message-avatar">{{ session.initials }}</span>
             <div>
               <small>你</small>
-              <p>{{ round.question }}</p>
+              <p>{{ message.content }}</p>
             </div>
           </article>
 
-          <article class="message-row assistant-message" :class="{ failed: round.failed }">
+          <article v-else class="message-row assistant-message" :class="{ failed: message.failed }">
             <span class="message-avatar"><Bot :size="19" /></span>
             <div>
               <small>8V 家庭助手</small>
-              <p v-if="round.answer">{{ round.answer }}</p>
+              <p v-if="message.content">{{ message.content }}</p>
               <div v-else class="thinking-indicator" aria-label="家庭 Agent 正在回答">
                 <i /><i /><i />
-                <span>正在整理家庭信息...</span>
+                <span>{{ activityLabel || "正在整理家庭信息..." }}</span>
               </div>
             </div>
           </article>
         </template>
       </div>
+
 
       <footer class="composer-area">
         <div class="composer" :class="{ 'is-busy': sending }">
@@ -152,7 +452,11 @@ function handleComposerKeydown(event: KeyboardEvent) {
             <span>{{ sending ? "回答中" : "发送" }}</span>
           </button>
         </div>
-        <p>Enter 发送 · Shift + Enter 换行 · 内容仅用于本次页面会话</p>
+        <p :class="{ 'limit-near': nearRoundLimit }">
+          Enter 发送 · Shift + Enter 换行 ·
+          本轮 {{ currentRounds }}/{{ limits.max_rounds }} ·
+          对话保存在服务器，超过 {{ limits.max_rounds }} 轮会清掉最早的记录，{{ limits.retention_days }} 天未使用的对话会被自动删除
+        </p>
       </footer>
     </section>
   </div>
@@ -160,11 +464,146 @@ function handleComposerKeydown(event: KeyboardEvent) {
 
 <style scoped>
 .agent-page {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 16px;
   height: calc(100vh - 162px);
   min-height: 560px;
 }
 
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 16px 12px;
+  overflow-y: auto;
+  background: #fffaf0;
+}
+
+.conversation-list > header {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.new-conversation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #d9bd7e;
+  border-radius: 7px;
+  color: #6b4f2a;
+  background: #fff3ce;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.new-conversation:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.conversation-list ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.conversation-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #5d4a33;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.conversation-item:hover:not(:disabled),
+.conversation-item.active {
+  border-color: #e3cb97;
+  background: #fff6dd;
+}
+
+.conversation-item:disabled {
+  cursor: not-allowed;
+}
+
+.conversation-title {
+  overflow: hidden;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.conversation-item small {
+  color: #9c8a6b;
+  font-size: 11px;
+}
+
+.delete-conversation {
+  display: flex;
+  padding: 6px;
+  border: none;
+  border-radius: 6px;
+  color: #a98f6a;
+  background: none;
+  cursor: pointer;
+}
+
+.delete-conversation:hover:not(:disabled) {
+  color: #a8452f;
+  background: #fbe4dd;
+}
+
+.delete-conversation:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.conversation-empty,
+.history-loading {
+  padding: 10px 4px;
+  color: #9c8a6b;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .agent-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .conversation-list {
+    max-height: 168px;
+  }
+}
+
+.limit-near {
+  color: #a8452f !important;
+  font-weight: 600;
+}
+
 .agent-shell {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100%;
@@ -226,32 +665,6 @@ function handleComposerKeydown(event: KeyboardEvent) {
   border-radius: 50%;
   background: var(--grass-400);
   box-shadow: 0 0 0 3px rgba(126, 166, 83, 0.16);
-}
-
-.memory-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  max-width: 570px;
-  padding: 11px 13px;
-  border: 1px solid #d9bd7e;
-  border-radius: 7px;
-  color: #765d46;
-  background: #fff3ce;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.memory-notice svg {
-  flex: 0 0 auto;
-  margin-top: 2px;
-  color: var(--yellow);
-}
-
-.memory-notice strong {
-  display: block;
-  margin-bottom: 1px;
-  color: var(--wood-700);
 }
 
 .conversation {

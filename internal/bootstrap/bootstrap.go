@@ -9,10 +9,7 @@ import (
 )
 
 func New(envFile string) (*app.APP, func(), error) {
-	application, cleanup, err := app.New(
-		context.Background(),
-		config.EnvFile(envFile),
-	)
+	application, cleanup, err := app.New(context.Background(), config.EnvFile(envFile))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create app: %w", err)
 	}

@@ -9,11 +9,7 @@ import (
 )
 
 func main() {
-	envFile := flag.String(
-		"env-file",
-		"",
-		"path to environment configuration file",
-	)
+	envFile := flag.String("env-file", "", "path to environment configuration file")
 	flag.Parse()
 
 	app, cleanup, err := bootstrap.New(*envFile)
@@ -34,13 +30,7 @@ func main() {
 		}
 	}()
 
-	slog.Info(
-		"vhome is starting",
-		"environment",
-		app.Config.App.Env,
-		"listen_addr",
-		app.Config.HTTP.Addr,
-	)
+	slog.Info("vhome is starting", "environment", app.Config.App.Env, "listen_addr", app.Config.HTTP.Addr)
 
 	if err := app.Engine.Run(app.Config.HTTP.Addr); err != nil {
 		slog.Error("application failed to start", "error", err)

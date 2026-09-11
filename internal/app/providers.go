@@ -19,9 +19,10 @@ import (
 // Workers holds the services the background goroutines need. Bundling them in
 // one struct keeps them reachable after the injector has built the graph.
 type Workers struct {
-	Memo         *service.MemoService
-	Notification *service.NotificationService
-	Calendar     *service.CalendarSyncService
+	Memo          *service.MemoService
+	Notification  *service.NotificationService
+	Calendar      *service.CalendarSyncService
+	Conversations *service.AgentConversationService
 }
 
 // provideDB returns the pool together with a cleanup function. Wire calls that

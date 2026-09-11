@@ -24,12 +24,47 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import AgentPet from "@/components/AgentPet.vue";
 import { useSessionStore } from "@/stores/session";
+import { usePetStore } from "@/stores/pet";
 import { getDashboard, getNotifications, readMaterialReminder, type NotificationSummary, type WeatherSummary } from "@/api";
 
 const route = useRoute();
 const router = useRouter();
 const session = useSessionStore();
+const pet = usePetStore();
+
+// 精灵在每个登录后的页面都在。agent 页的提示由 AgentView 接管
+// （思考/查询/轮次告警），布局层只在别的页面做闲聊。
+const petOwnedByAgentView = computed(() => route.name === "agent");
+
+// 进页面后先来一句（否则用户会以为它不会说话），之后间隔拉长。
+const petFirstChatterDelay = 6_000;
+const petChatterDelay = 40_000;
+let petChatterTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleChatter(delay = petChatterDelay) {
+  clearTimeout(petChatterTimer);
+
+  petChatterTimer = setTimeout(() => {
+    if (!petOwnedByAgentView.value && !pet.busy) {
+      pet.say(pet.chatterFor(String(route.name ?? "")), 8000);
+    }
+    scheduleChatter();
+  }, delay);
+}
+
+/** 戳一下：打个招呼。agent 页不抢 AgentView 的话头。 */
+function handlePetPoke() {
+  if (pet.busy) return;
+
+  if (petOwnedByAgentView.value) {
+    pet.say("在呢，有什么想问的？", 4000);
+    return;
+  }
+
+  pet.say(pet.chatterFor(String(route.name ?? "")), 6000);
+}
 const collapsed = ref(false);
 const mobileOpen = ref(false);
 const isLoggingOut = ref(false);
@@ -56,13 +91,26 @@ onMounted(() => {
   notificationTimer = window.setInterval(loadNotifications, 60_000);
   window.addEventListener("vhome:notifications-changed", handleNotificationsChanged);
   window.addEventListener("vhome:dashboard-changed", handleDashboardChanged);
+  if (petOwnedByAgentView.value) pet.resetPosition();
+  scheduleChatter(petFirstChatterDelay);
 });
 onBeforeUnmount(() => {
   window.clearInterval(notificationTimer);
   window.removeEventListener("vhome:notifications-changed", handleNotificationsChanged);
   window.removeEventListener("vhome:dashboard-changed", handleDashboardChanged);
+  clearTimeout(petChatterTimer);
 });
-watch(() => route.fullPath, () => void loadNotifications());
+watch(() => route.fullPath, () => {
+  void loadNotifications();
+
+  // 换页时收掉上一页的闲聊；AgentView 会自己接管 agent 页。
+  if (!pet.busy) pet.reset();
+
+  // 进 agent 页把精灵放回默认角落：对话页需要它待在可预期的位置。
+  if (petOwnedByAgentView.value) pet.resetPosition();
+
+  scheduleChatter(petFirstChatterDelay);
+});
 
 const allNavGroups = [
   {
@@ -274,6 +322,15 @@ async function logout() {
         <RouterView />
       </div>
     </main>
+
+    <AgentPet
+      :state="pet.state"
+      :message="pet.message"
+      :position="pet.position"
+      @move="pet.savePosition"
+      @poke="handlePetPoke"
+      @grab="pet.hush"
+    />
 
     <div class="ambient-decoration ambient-snowflake"><Snowflake /></div>
     <div class="ambient-decoration ambient-sparkle"><Sparkles /></div>

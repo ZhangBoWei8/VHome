@@ -20,6 +20,7 @@ func newTestRegistry() *Registry {
 		Expense:  &service.ExpenseService{},
 		Memo:     &service.MemoService{},
 		Identity: &service.IdentityService{},
+		Memory:   &service.AgentMemoryService{},
 	})
 }
 
@@ -45,6 +46,9 @@ func TestRegistryAdvertisesEveryTool(t *testing.T) {
 		"meal_search_food",
 		"memo_create",
 		"memo_list",
+		"memory_forget",
+		"memory_list",
+		"memory_remember",
 		"pantry_add",
 		"pantry_discard",
 		"pantry_list",

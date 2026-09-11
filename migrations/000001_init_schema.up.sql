@@ -264,7 +264,7 @@ CREATE TABLE IF NOT EXISTS calendar_day_overrides (
   COLLATE = utf8mb4_unicode_ci;
 
 -- 2026 official holiday arrangement (国务院办公厅，国办发明电〔2025〕7号).
-INSERT INTO calendar_day_overrides
+INSERT IGNORE INTO calendar_day_overrides
     (calendar_date, day_type, holiday_name, source_url)
 VALUES
     ('2026-01-01', 'HOLIDAY', '元旦', 'https://www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm'),

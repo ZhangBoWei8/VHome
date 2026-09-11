@@ -12,15 +12,17 @@ on:
         description: "要部署的 commit SHA 或分支，留空则用 main 的最新提交"
         required: false
         default: ""
+      build_only:
+        description: "只构建并推送镜像，跳过部署（服务器还没装 runner 时勾选）"
+        type: boolean
+        required: false
+        default: false
 
 # Deploys must never overlap, and a running deploy must never be cancelled
 # halfway through.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
-
-env:
-  REGISTRY: ${{ vars.VHOME_IMAGE_REGISTRY }}
 
 jobs:
   build:
@@ -37,10 +39,26 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
 
-      - id: meta
+      # Everything defaults to GHCR under this repository's owner, so the
+      # GHCR path needs no repository configuration at all. Set the
+      # VHOME_IMAGE_REGISTRY variable to push somewhere else.
+      - id: cfg
         run: |
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          registry='${{ vars.VHOME_IMAGE_REGISTRY }}'
+          if [ -z "$registry" ]; then
+            owner="$(printf '%s' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+            registry="ghcr.io/$owner"
+          fi
+
+          host='${{ vars.VHOME_REGISTRY_HOST }}'
+          [ -n "$host" ] || host="${registry%%/*}"
+
+          {
+            echo "registry=$registry"
+            echo "host=$host"
+            echo "sha=$(git rev-parse HEAD)"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -49,7 +67,7 @@ jobs:
       - name: Log in to the registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ vars.VHOME_REGISTRY_HOST }}
+          registry: ${{ steps.cfg.outputs.host }}
           username: ${{ secrets.VHOME_REGISTRY_USERNAME || github.actor }}
           password: ${{ secrets.VHOME_REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
 
@@ -59,11 +77,11 @@ jobs:
           target: ${{ matrix.target }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/vhome-${{ matrix.target }}:${{ steps.meta.outputs.sha }}
-            ${{ env.REGISTRY }}/vhome-${{ matrix.target }}:latest
+            ${{ steps.cfg.outputs.registry }}/vhome-${{ matrix.target }}:${{ steps.cfg.outputs.sha }}
+            ${{ steps.cfg.outputs.registry }}/vhome-${{ matrix.target }}:latest
           build-args: |
-            GIT_COMMIT=${{ steps.meta.outputs.sha }}
-            BUILD_TIME=${{ steps.meta.outputs.built_at }}
+            GIT_COMMIT=${{ steps.cfg.outputs.sha }}
+            BUILD_TIME=${{ steps.cfg.outputs.built_at }}
             GOPROXY=https://proxy.golang.org,direct
             GOSUMDB=sum.golang.org
           cache-from: type=gha,scope=${{ matrix.target }}
@@ -72,18 +90,47 @@ jobs:
   deploy:
     name: Deploy to production
     needs: build
+    # Skipped for a build-only run, which is how the registry path is verified
+    # before the self-hosted runner exists. Without this the job would sit in
+    # the queue forever waiting for a runner that is not there yet.
+    if: ${{ !inputs.build_only }}
     runs-on: [self-hosted, vhome-prod]
     steps:
-      - id: meta
-        run: |
-          if [ -n "${{ inputs.ref }}" ]; then
-            echo "sha=${{ inputs.ref }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-          fi
-
-      # The deployment directory on the server is a git clone that also holds
-      # the private .env. The script checks out the requested commit there so
-      # compose.yaml and the migrations always match the image being deployed.
+      # The script, compose.yaml, the migrations and the private .env all live
+      # in the deployment directory on the server. The runner only triggers the
+      # rollout; it checks nothing out here.
       - name: Roll out
-        run: ${{ vars.VHOME_DEPLOY_DIR }}/deploy/deploy-remote.sh "${{ steps.meta.outputs.sha }}"
+        run: |
+          dir='${{ vars.VHOME_DEPLOY_DIR }}'
+          [ -n "$dir" ] || dir=/opt/vhome
+          "$dir/deploy/deploy-remote.sh" '${{ inputs.ref || github.sha }}'
+
+  # Keeps exactly two versions per image: the one just deployed and the one
+  # before it. That is the minimum that still supports the rollback in
+  # deploy-remote.sh, which only ever goes back to .last-good-tag, and it keeps
+  # storage small enough that making the packages private stays an option.
+  #
+  # The trade-off is deliberate: rolling back two deploys is no longer possible
+  # from the registry. Raise min-versions-to-keep if that becomes a problem.
+  #
+  # Never runs for a non-GHCR registry, which has its own retention rules.
+  cleanup:
+    name: Prune old image versions
+    needs: deploy
+    if: ${{ vars.VHOME_IMAGE_REGISTRY == '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    continue-on-error: true
+    strategy:
+      matrix:
+        target: [api, web]
+    steps:
+      # A push tags one manifest with both the SHA and `latest`, so the newest
+      # version carries both and two versions means two deploys.
+      - uses: actions/delete-package-versions@v5
+        with:
+          package-name: vhome-${{ matrix.target }}
+          package-type: container
+          min-versions-to-keep: 2
+          ignore-versions: '^latest$'

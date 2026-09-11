@@ -14,4 +14,6 @@ var ProviderSet = wire.NewSet(
 	NewNotificationService,
 	NewCalendarSyncService,
 	NewDashboardService,
+	NewAgentMemoryService,
+	NewAgentConversationService,
 )
